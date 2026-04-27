@@ -16,6 +16,7 @@
 import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
+import { loadWechatSources } from "./sources/wechat.js";
 
 // -- Constants ---------------------------------------------------------------
 
@@ -42,15 +43,26 @@ const STATE_PATH = join(SCRIPT_DIR, "..", "state-feed.json");
 
 async function loadState() {
   if (!existsSync(STATE_PATH)) {
-    return { seenTweets: {}, seenVideos: {}, seenArticles: {} };
+    return {
+      seenTweets: {},
+      seenVideos: {},
+      seenArticles: {},
+      seenWechatPosts: {},
+    };
   }
   try {
     const state = JSON.parse(await readFile(STATE_PATH, "utf-8"));
-    // Ensure seenArticles exists for older state files
+    // Ensure newer fields exist for older state files
     if (!state.seenArticles) state.seenArticles = {};
+    if (!state.seenWechatPosts) state.seenWechatPosts = {};
     return state;
   } catch {
-    return { seenTweets: {}, seenVideos: {}, seenArticles: {} };
+    return {
+      seenTweets: {},
+      seenVideos: {},
+      seenArticles: {},
+      seenWechatPosts: {},
+    };
   }
 }
 
@@ -65,6 +77,9 @@ async function saveState(state) {
   }
   for (const [id, ts] of Object.entries(state.seenArticles || {})) {
     if (ts < cutoff) delete state.seenArticles[id];
+  }
+  for (const [id, ts] of Object.entries(state.seenWechatPosts || {})) {
+    if (ts < cutoff) delete state.seenWechatPosts[id];
   }
   await writeFile(STATE_PATH, JSON.stringify(state, null, 2));
 }
@@ -980,31 +995,38 @@ async function main() {
   const tweetsOnly = args.includes("--tweets-only");
   const podcastsOnly = args.includes("--podcasts-only");
   const blogsOnly = args.includes("--blogs-only");
+  const wechatOnly = args.includes("--wechat-only");
+  const anyOnlyFlag = tweetsOnly || podcastsOnly || blogsOnly || wechatOnly;
 
   // If a specific --*-only flag is set, only that feed type runs.
-  // If no flag is set, all three run.
-  const runTweets = tweetsOnly || (!podcastsOnly && !blogsOnly);
-  const runPodcasts = podcastsOnly || (!tweetsOnly && !blogsOnly);
-  const runBlogs = blogsOnly || (!tweetsOnly && !podcastsOnly);
+  // If no flag is set, all sources run.
+  const runTweets = tweetsOnly || !anyOnlyFlag;
+  const runPodcasts = podcastsOnly || !anyOnlyFlag;
+  const runBlogs = blogsOnly || !anyOnlyFlag;
+  const runWechat = wechatOnly || !anyOnlyFlag;
 
   const xBearerToken = process.env.X_BEARER_TOKEN;
   const pod2txtKey = process.env.POD2TXT_API_KEY;
 
-  if (runPodcasts && !pod2txtKey) {
-    console.error("POD2TXT_API_KEY not set");
-    process.exit(1);
-  }
-  if (runTweets && !xBearerToken) {
-    console.error("X_BEARER_TOKEN not set");
-    process.exit(1);
-  }
+  // MVP: if API keys are missing, skip those sources instead of exiting,
+  // so the wechat mock source can still flow through to feed-wechat.json.
+  const skipTweets = runTweets && !xBearerToken;
+  const skipPodcasts = runPodcasts && !pod2txtKey;
+  if (skipTweets) console.error("X_BEARER_TOKEN not set — skipping tweets");
+  if (skipPodcasts)
+    console.error("POD2TXT_API_KEY not set — skipping podcasts");
 
   const sources = await loadSources();
   const state = await loadState();
   const errors = [];
 
+  if (runWechat) {
+    console.error("Loading WeChat sources from sources/wechat-input.json...");
+    sources.wechat = await loadWechatSources();
+  }
+
   // Fetch tweets
-  if (runTweets) {
+  if (runTweets && !skipTweets) {
     console.error("Fetching X/Twitter content...");
     const xContent = await fetchXContent(
       sources.x_accounts,
@@ -1035,7 +1057,7 @@ async function main() {
   }
 
   // Fetch podcasts
-  if (runPodcasts) {
+  if (runPodcasts && !skipPodcasts) {
     console.error("Fetching podcast content (RSS + pod2txt)...");
     const podcasts = await fetchPodcastContent(
       sources.podcasts,
@@ -1083,6 +1105,50 @@ async function main() {
       JSON.stringify(blogFeed, null, 2),
     );
     console.error(`  feed-blogs.json: ${blogContent.length} posts`);
+  }
+
+  // Fetch WeChat content. Stage 2: real article fetch via wechat-parser.
+  if (runWechat && sources.wechat && sources.wechat.length > 0) {
+    console.error("Building WeChat builder-card feed...");
+
+    // Identity = builder + title + publish_time → stable across runs.
+    const idOf = (it) =>
+      `${it.builder_name}::${it.title}::${it.publish_time || ""}`;
+
+    const wechatItems = [];
+    let dedupSkipped = 0;
+    for (const it of sources.wechat) {
+      const id = idOf(it);
+      if (state.seenWechatPosts[id]) {
+        dedupSkipped++;
+        console.error(`  - skip (seen): ${it.builder_name} / ${it.title}`);
+        continue;
+      }
+      wechatItems.push({
+        source: "wechat",
+        builder_name: it.builder_name,
+        title: it.title,
+        content: it.content,
+        publish_time: it.publish_time,
+        source_url: it.source_url || null,
+        ...(it.parseError ? { parseError: it.parseError } : {}),
+      });
+      state.seenWechatPosts[id] = Date.now();
+      console.error(`  - ${it.builder_name}: ${it.title}`);
+    }
+
+    const wechatFeed = {
+      generatedAt: new Date().toISOString(),
+      wechat: wechatItems,
+      stats: { wechatPosts: wechatItems.length, dedupSkipped },
+    };
+    await writeFile(
+      join(SCRIPT_DIR, "..", "feed-wechat.json"),
+      JSON.stringify(wechatFeed, null, 2),
+    );
+    console.error(
+      `  feed-wechat.json: ${wechatItems.length} new posts (${dedupSkipped} skipped)`,
+    );
   }
 
   // Save dedup state
