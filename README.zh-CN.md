@@ -11,13 +11,12 @@
 每日或每周推送到你常用的通讯工具（Telegram、Discord、WhatsApp 等）的中文公众号 Builder
 信号——不是文章全文摘要，而是 **Builder Card**：以"创作者"为单位的信号卡片，几秒就能扫完。
 
-每张卡固定 5 个字段：
+每张卡固定 4 个字段：
 
 - `builder_name` — 公众号 / 创作者名称
-- `insight_summary` — 1～2 句洞察提炼（100～150 字），不是全文摘要
+- `summary` — 文章内容简介，200～500 字符（不是全文摘要）
 - `source_url` — 原文链接
-- `skills` — 技能 / 主题标签数组
-- `signal_type` — `观点 / 工具 / 案例 / 方法论` 四选一
+- `keywords` — 文章关键字数组，3～6 个
 
 ## 快速开始
 
@@ -48,8 +47,8 @@ Agent 会询问你：
 ## 自定义 Builder Card
 
 Builder Card 的 prompt 写在 [`scripts/prepare-digest.js`](scripts/prepare-digest.js) 里（搜索 `summarize_wechat`）。
-它指挥 LLM 覆写 `insight_summary` 与 `signal_type`，让卡片真正像"创作者信号"。
-直接编辑这段 prompt 就能调整语气、长度、或者你希望的 `signal_type` 取值。
+它指挥 LLM 覆写 `summary` 与 `keywords`，让卡片真正像"创作者信号"。
+直接编辑这段 prompt 就能调整语气、长度、或者关键字选择方式。
 
 ## 信息源：公众号（WeChat）
 
@@ -71,25 +70,23 @@ Builder Card 的 prompt 写在 [`scripts/prepare-digest.js`](scripts/prepare-dig
 
 ### Builder Card 输出格式
 
-公众号内容在 digest 层以 **Builder Card**（创作者卡片）形式呈现——不是文章全文摘要，而是以"创作者"为单位的信号卡。每张卡固定 5 个字段：
+公众号内容在 digest 层以 **Builder Card**（创作者卡片）形式呈现——不是文章全文摘要，而是以"创作者"为单位的信号卡。每张卡固定 4 个字段：
 
-| 字段              | 说明                                          |
-|-------------------|-----------------------------------------------|
-| `builder_name`    | 公众号 / 创作者名称                           |
-| `insight_summary` | 1～2 句洞察提炼（100～150 字），不是全文摘要  |
-| `source_url`      | 原文链接                                      |
-| `skills`          | 技能 / 主题标签数组                           |
-| `signal_type`     | `观点` / `工具` / `案例` / `方法论` 四选一    |
+| 字段           | 说明                                           |
+|----------------|------------------------------------------------|
+| `builder_name` | 公众号 / 创作者名称                            |
+| `summary`      | 文章内容简介，200～500 字符（不是全文摘要）    |
+| `source_url`   | 原文链接                                       |
+| `keywords`     | 文章关键字数组，3～6 个                        |
 
 `node prepare-digest.js` 的输出示例：
 
 ```json
 {
   "builder_name": "AI产品黄叔",
-  "insight_summary": "MCP 太爽了 / 太难了 / 很重要 …",
+  "summary": "2025 魔搭开发者大会分享：MCP 太爽了 / MCP 太难了 / MCP 很重要 …（200–500 字符）",
   "source_url": "https://mp.weixin.qq.com/s/EAMCvEQxyvN_1flStlvUMg",
-  "skills": ["Agent", "MCP", "Prompt", "智能体", "上下文"],
-  "signal_type": "工具"
+  "keywords": ["Agent", "MCP", "Prompt", "智能体", "上下文"]
 }
 ```
 
@@ -102,10 +99,10 @@ scripts/sources/wechat-parser.js   （抓取 mp.weixin.qq.com，解析 title / c
         ↓
 feed-wechat.json                   （通过 state-feed.json:seenWechatPosts 去重）
         ↓
-scripts/prepare-digest.js          （insight_summary 与 signal_type 先用确定性 heuristic
+scripts/prepare-digest.js          （summary 200–500 字符 与 keywords 3–6 个先用 heuristic
                                      生成；summarize_wechat prompt 让 LLM 在接入后覆盖它们）
         ↓
-Builder Card  { builder_name, insight_summary, source_url, skills, signal_type }
+Builder Card  { builder_name, summary, source_url, keywords }
 ```
 
 本地运行：
@@ -146,12 +143,12 @@ cd ~/.claude/skills/follow-builders/scripts && npm install
 
 1. 你在 `scripts/sources/wechat-input.json` 里维护要追踪的公众号文章 URL 列表
 2. `generate-feed.js` 抓取每个 URL，解析出 title / content / publish_time，写入 `feed-wechat.json`（通过 `state-feed.json:seenWechatPosts` 去重）
-3. `prepare-digest.js` 把每条内容转成 Builder Card，并输出 5 字段 JSON
+3. `prepare-digest.js` 把每条内容转成 Builder Card，并输出 4 字段 JSON
 4. 推送到你的通讯工具（或直接在聊天中显示）
 
 ## 隐私
 
-- 不发送任何 API key——所有内容由中心化服务获取
+- 不发送任何 API key——公众号内容从你提供的公开链接抓取
 - 如果你使用 Telegram/邮件推送，相关 key 仅存储在本地 `~/.follow-builders/.env`
 - Skill 只读取你显式加到清单里的公开公众号文章
 - 你的配置、偏好和阅读记录都保留在你自己的设备上

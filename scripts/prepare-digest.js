@@ -35,7 +35,7 @@ const FEED_BLOGS_URL = 'https://raw.githubusercontent.com/zarazhangrui/follow-bu
 const SCRIPT_DIR_PATH = decodeURIComponent(new URL('.', import.meta.url).pathname);
 const LOCAL_FEED_WECHAT = join(SCRIPT_DIR_PATH, '..', 'feed-wechat.json');
 
-// Lightweight keyword bank used to extract `skills` from raw content.
+// Lightweight keyword bank used to extract `keywords` from raw content.
 // Keep this small and explicit — Stage 1 only needs to prove the pipeline.
 const SKILL_KEYWORDS = [
   'Agent Workflow',
@@ -64,42 +64,39 @@ const SKILL_KEYWORDS = [
   '向量',
 ];
 
-function extractSkills(text) {
+// Extract 3~6 keywords from text by matching the SKILL_KEYWORDS bank.
+// Order is preserved (bank order = priority). Capped at 6.
+function extractKeywords(text) {
   if (!text) return [];
-  const found = new Set();
+  const found = [];
+  const seen = new Set();
   const lower = text.toLowerCase();
   for (const kw of SKILL_KEYWORDS) {
-    if (lower.includes(kw.toLowerCase())) found.add(kw);
+    const lk = kw.toLowerCase();
+    if (!seen.has(lk) && lower.includes(lk)) {
+      seen.add(lk);
+      found.push(kw);
+    }
+    if (found.length >= 6) break;
   }
-  return [...found];
+  return found;
 }
 
-// Heuristic: take the first ~150 Chinese chars, snap to a sentence boundary.
-// This is a deterministic stand-in for the LLM's insight extraction so the
-// pipeline can produce Builder Cards without an LLM call. The real
-// summarize_wechat prompt below tells the LLM to overwrite this field.
-function buildInsightSummary(content, title) {
+// Heuristic 200~500 字符的内容简介。Snap to a sentence boundary inside
+// the window so the cut feels natural. The summarize_wechat prompt tells
+// the LLM to overwrite this with a real distilled summary once wired in.
+function buildSummary(content, title) {
   const text = (content || "").replace(/\s+/g, " ").trim();
   if (!text) return title || "";
 
-  const window = text.slice(0, 250);
+  const window = text.slice(0, 600);
   const breaks = ["。", "！", "？"];
   let cut = -1;
   for (const ch of breaks) {
     const idx = window.lastIndexOf(ch);
-    if (idx > 80 && idx < 200 && idx > cut) cut = idx;
+    if (idx > 200 && idx < 500 && idx > cut) cut = idx;
   }
-  return cut > 0 ? window.slice(0, cut + 1) : window.slice(0, 150);
-}
-
-// Heuristic signal_type. Order matters — first match wins.
-function inferSignalType(title, content) {
-  const text = `${title || ""} ${content || ""}`;
-  if (/(工具|发布|上线|推出|开源|API|SDK|产品)/i.test(text)) return "工具";
-  if (/(案例|实战|实践|经验|教训|复盘)/i.test(text)) return "案例";
-  if (/(方法|步骤|流程|框架|how[- ]?to|如何|怎么)/i.test(text))
-    return "方法论";
-  return "观点";
+  return cut > 0 ? window.slice(0, cut + 1) : window.slice(0, 400);
 }
 
 const PROMPTS_BASE = 'https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/prompts';
@@ -167,17 +164,16 @@ async function main() {
     errors.push('Local feed-wechat.json not found — run generate-feed.js first');
   }
 
-  // Build Builder Cards. Each card has 5 fields by contract:
-  //   builder_name / insight_summary / source_url / skills / signal_type
-  // We pre-fill insight_summary + signal_type with heuristics so the pipeline
-  // is usable without an LLM. The summarize_wechat prompt instructs the LLM
-  // to overwrite insight_summary with a real 100-150 字 insight提炼.
+  // Build Builder Cards. Each card has 4 fields by contract:
+  //   builder_name / summary / source_url / keywords
+  // summary is pre-filled by a 200~500 字符 heuristic so the pipeline runs
+  // without an LLM; the summarize_wechat prompt tells the LLM to overwrite
+  // it with a real distilled summary once wired in.
   const wechatItems = (feedWechat?.wechat || []).map((it) => ({
     builder_name: it.builder_name,
-    insight_summary: buildInsightSummary(it.content, it.title),
+    summary: buildSummary(it.content, it.title),
     source_url: it.source_url || null,
-    skills: extractSkills(`${it.title} ${it.content}`),
-    signal_type: inferSignalType(it.title, it.content),
+    keywords: extractKeywords(`${it.title} ${it.content}`),
     // Raw fields kept for the LLM step that may want richer context:
     _title: it.title,
     _publish_time: it.publish_time,
@@ -220,38 +216,36 @@ async function main() {
     }
   }
 
-  // Builder Card prompt. Output is creator-centric (a "signal"), not an
-  // article summary. Each card has exactly 5 fields.
+  // Builder Card prompt. Output is creator-centric, 4 fields exactly.
   prompts.summarize_wechat = [
     '# WeChat Builder Card Prompt',
     '',
-    '你在把中文公众号文章转换为 Builder Card —— 这是一种以"创作者"为单位的信号卡片，',
-    '不是文章全文摘要。',
+    '你在把中文公众号文章转换为 Builder Card —— 以"创作者"为单位的信号卡片。',
     '',
-    '## 针对每条内容，输出 5 个字段',
+    '## 针对每条内容，输出 4 个字段',
     '',
-    '1. builder_name — 公众号 / 创作者名称',
-    '2. insight_summary — 1~2 句洞察提炼 (100~150 字)，提取这位 builder 的核心观点或信号，',
-    '   不要复述全文，不要"在本文中作者讨论了..."这种套话',
+    '1. builder_name — 公众号 / 创作者名称（保留原始名字）',
+    '2. summary — 公众号文章内容简介，200~500 字符。不是全文摘要，而是核心要点的浓缩，',
+    '   让读者 30 秒内知道这位 builder 在说什么、给出了什么信号',
     '3. source_url — 原文链接',
-    '4. skills — 技能 / 主题标签数组，如 ["Agent Workflow", "MCP", "Prompt Engineering"]',
-    '5. signal_type — 信号类型，必须是以下之一: "观点" | "工具" | "案例" | "方法论"',
+    '4. keywords — 文章关键字数组，3~6 个，技术 / 主题 / 方法相关的词',
+    '   (例如 ["MCP", "Agent Workflow", "Prompt Engineering"])',
     '',
     '## 输出 JSON 结构',
     '',
     '{',
-    '  "builder_name": "Builder Zara Zhang",',
-    '  "insight_summary": "当开始写作时，80% 思考已完成；写作不是输出文字，而是思想落地。",',
+    '  "builder_name": "AI产品黄叔",',
+    '  "summary": "...",',
     '  "source_url": "https://mp.weixin.qq.com/s/...",',
-    '  "skills": ["Writing", "PRD", "Prototype"],',
-    '  "signal_type": "观点"',
+    '  "keywords": ["MCP", "Agent", "工作流"]',
     '}',
     '',
     '## 规则',
     '',
-    '- insight_summary 必须是 builder 的"洞察"，不是文章梗概',
-    '- skills 只放技术 / 方法 / 角色相关的词，不要放泛词 (例如 不要 "AI" / "未来")',
-    '- 如果你不能从原文里看出明显信号，不要瞎编，宁可让 insight_summary 短一点',
+    '- summary 不要"在本文中作者讨论了..."这种套话，直接给信号',
+    '- keywords 只放技术 / 方法 / 角色相关的词，不要放 "AI" / "未来" 这种泛词',
+    '- keywords 严格控制在 3~6 个；多于 6 个时只保留最高频/最重要的',
+    '- 如果你不能从原文里读到清晰信号，宁可让 summary 短一点，不要瞎编',
     ''
   ].join('\n');
 

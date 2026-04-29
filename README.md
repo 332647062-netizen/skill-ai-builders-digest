@@ -15,13 +15,12 @@ A daily or weekly digest of **Chinese WeChat (公众号) AI builders**, delivere
 preferred messaging app (Telegram, Discord, WhatsApp, etc.) — but instead of article
 summaries, you get **Builder Cards**: creator-centric signals you can scan in seconds.
 
-Each card has 5 fixed fields:
+Each card has 4 fixed fields:
 
 - `builder_name` — 公众号 / 创作者名称
-- `insight_summary` — 1–2 句洞察提炼 (100–150 字)，不是全文摘要
+- `summary` — 文章内容简介，200–500 字符（不是全文摘要）
 - `source_url` — 原文链接
-- `skills` — 技能 / 主题标签数组
-- `signal_type` — `观点 / 工具 / 案例 / 方法论` 四选一
+- `keywords` — 文章关键字数组，3–6 个
 
 ## Quick Start
 
@@ -54,9 +53,9 @@ Add or remove article URLs whenever you want — the next digest picks them up.
 
 The Builder Card prompt lives inline in
 [`scripts/prepare-digest.js`](scripts/prepare-digest.js) (look for `summarize_wechat`).
-It instructs the LLM to overwrite `insight_summary` and `signal_type` with real,
-on-brand insights once an LLM is wired in. You can edit that prompt directly to
-change tone, length, or which `signal_type` values you want.
+It instructs the LLM to overwrite `summary` and `keywords` with real, on-brand
+output once an LLM is wired in. You can edit that prompt directly to change
+tone, length, or how keywords are picked.
 
 ## Source: WeChat (公众号)
 
@@ -81,25 +80,23 @@ Edit [`scripts/sources/wechat-input.json`](scripts/sources/wechat-input.json):
 ### Builder Card output format
 
 WeChat content is exposed in the digest as **Builder Cards** — creator-centric
-signals, not article summaries. Each card has exactly 5 fields:
+signals, not article summaries. Each card has exactly 4 fields:
 
-| Field             | Description                                      |
-|-------------------|--------------------------------------------------|
-| `builder_name`    | 公众号 / 创作者名称                              |
-| `insight_summary` | 1–2 句洞察提炼 (100–150 字)，不是全文摘要        |
-| `source_url`      | 原文链接                                         |
-| `skills`          | 技能 / 主题标签数组                              |
-| `signal_type`     | One of `观点 / 工具 / 案例 / 方法论`             |
+| Field          | Description                                      |
+|----------------|--------------------------------------------------|
+| `builder_name` | 公众号 / 创作者名称                              |
+| `summary`      | 文章内容简介，200–500 字符（不是全文摘要）       |
+| `source_url`   | 原文链接                                         |
+| `keywords`     | 文章关键字数组，3–6 个                           |
 
 Example output from `node prepare-digest.js`:
 
 ```json
 {
   "builder_name": "AI产品黄叔",
-  "insight_summary": "MCP 太爽了 / 太难了 / 很重要 …",
+  "summary": "2025 魔搭开发者大会分享：MCP 太爽了 / MCP 太难了 / MCP 很重要 …（200–500 字符）",
   "source_url": "https://mp.weixin.qq.com/s/EAMCvEQxyvN_1flStlvUMg",
-  "skills": ["Agent", "MCP", "Prompt", "智能体", "上下文"],
-  "signal_type": "工具"
+  "keywords": ["Agent", "MCP", "Prompt", "智能体", "上下文"]
 }
 ```
 
@@ -112,10 +109,10 @@ scripts/sources/wechat-parser.js   (fetch mp.weixin.qq.com, extract title/conten
         ↓
 feed-wechat.json                   (deduped via state-feed.json:seenWechatPosts)
         ↓
-scripts/prepare-digest.js          (heuristic insight_summary + signal_type;
+scripts/prepare-digest.js          (heuristic 200–500 字符 summary + 3–6 keywords;
                                     summarize_wechat prompt lets an LLM overwrite them)
         ↓
-Builder Card  { builder_name, insight_summary, source_url, skills, signal_type }
+Builder Card  { builder_name, summary, source_url, keywords }
 ```
 
 Run it locally:
@@ -158,12 +155,12 @@ That's it. No API keys needed — WeChat articles are fetched directly from
 1. You maintain a list of public WeChat article URLs in `scripts/sources/wechat-input.json`
 2. `generate-feed.js` fetches each URL, extracts title / content / publish_time, and writes
    `feed-wechat.json` (deduped via `state-feed.json:seenWechatPosts`)
-3. `prepare-digest.js` turns each item into a Builder Card and exposes the 5-field JSON
+3. `prepare-digest.js` turns each item into a Builder Card and exposes the 4-field JSON
 4. The digest is delivered to your messaging app (or shown in-chat)
 
 ## Privacy
 
-- No API keys are sent anywhere — all content is fetched centrally
+- No API keys are sent anywhere — WeChat content is fetched from the public URLs you provide
 - If you use Telegram/email delivery, those keys are stored locally in `~/.follow-builders/.env`
 - The skill only reads public content (public WeChat articles you explicitly add to the input list)
 - Your configuration, preferences, and reading history stay on your machine
