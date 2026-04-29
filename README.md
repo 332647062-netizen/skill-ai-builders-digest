@@ -11,14 +11,17 @@ influencers who regurgitate information.
 
 ## What You Get
 
-A daily or weekly digest delivered to your preferred messaging app (Telegram, Discord,
-WhatsApp, etc.) with:
+A daily or weekly digest of **Chinese WeChat (公众号) AI builders**, delivered to your
+preferred messaging app (Telegram, Discord, WhatsApp, etc.) — but instead of article
+summaries, you get **Builder Cards**: creator-centric signals you can scan in seconds.
 
-- Summaries of new podcast episodes from top AI podcasts
-- Key posts and insights from 25 curated AI builders on X/Twitter
-- Full articles from official AI company blogs (Anthropic Engineering, Claude Blog)
-- Links to all original content
-- Available in English, Chinese, or bilingual
+Each card has 5 fixed fields:
+
+- `builder_name` — 公众号 / 创作者名称
+- `insight_summary` — 1–2 句洞察提炼 (100–150 字)，不是全文摘要
+- `source_url` — 原文链接
+- `skills` — 技能 / 主题标签数组
+- `signal_type` — `观点 / 工具 / 案例 / 方法论` 四选一
 
 ## Quick Start
 
@@ -43,53 +46,23 @@ Your delivery preferences are configurable through conversation. Just tell your 
 - "Make the summaries shorter"
 - "Show me my current settings"
 
-The source list (builders and podcasts) is curated centrally and updates
-automatically — you always get the latest sources without doing anything.
+The list of WeChat sources is **maintained by you** in
+[`scripts/sources/wechat-input.json`](scripts/sources/wechat-input.json).
+Add or remove article URLs whenever you want — the next digest picks them up.
 
-## Customizing the Summaries
+## Customizing the Builder Card
 
-The skill uses plain-English prompt files to control how content is summarized.
-You can customize them two ways:
+The Builder Card prompt lives inline in
+[`scripts/prepare-digest.js`](scripts/prepare-digest.js) (look for `summarize_wechat`).
+It instructs the LLM to overwrite `insight_summary` and `signal_type` with real,
+on-brand insights once an LLM is wired in. You can edit that prompt directly to
+change tone, length, or which `signal_type` values you want.
 
-**Through conversation (recommended):**
-Tell your agent what you want — "Make summaries more concise," "Focus on actionable
-insights," "Use a more casual tone." The agent updates the prompts for you.
+## Source: WeChat (公众号)
 
-**Direct editing (power users):**
-Edit the files in the `prompts/` folder:
-- `summarize-podcast.md` — how podcast episodes are summarized
-- `summarize-tweets.md` — how X/Twitter posts are summarized
-- `summarize-blogs.md` — how blog posts are summarized
-- `digest-intro.md` — the overall digest format and tone
-- `translate.md` — how English content is translated to Chinese
-
-These are plain English instructions, not code. Changes take effect on the next digest.
-
-## Default Sources
-
-### Podcasts (6)
-- [Latent Space](https://www.youtube.com/@LatentSpacePod)
-- [Training Data](https://www.youtube.com/playlist?list=PLOhHNjZItNnMm5tdW61JpnyxeYH5NDDx8)
-- [No Priors](https://www.youtube.com/@NoPriorsPodcast)
-- [Unsupervised Learning](https://www.youtube.com/@RedpointAI)
-- [The MAD Podcast with Matt Turck](https://www.youtube.com/@DataDrivenNYC)
-- [AI & I by Every](https://www.youtube.com/playlist?list=PLuMcoKK9mKgHtW_o9h5sGO2vXrffKHwJL)
-
-### AI Builders on X (25)
-[Andrej Karpathy](https://x.com/karpathy), [Swyx](https://x.com/swyx), [Josh Woodward](https://x.com/joshwoodward), [Kevin Weil](https://x.com/kevinweil), [Peter Yang](https://x.com/petergyang), [Nan Yu](https://x.com/thenanyu), [Madhu Guru](https://x.com/realmadhuguru), [Amanda Askell](https://x.com/AmandaAskell), [Cat Wu](https://x.com/_catwu), [Thariq](https://x.com/trq212), [Google Labs](https://x.com/GoogleLabs), [Amjad Masad](https://x.com/amasad), [Guillermo Rauch](https://x.com/rauchg), [Alex Albert](https://x.com/alexalbert__), [Aaron Levie](https://x.com/levie), [Ryo Lu](https://x.com/ryolu_), [Garry Tan](https://x.com/garrytan), [Matt Turck](https://x.com/mattturck), [Zara Zhang](https://x.com/zarazhangrui), [Nikunj Kothari](https://x.com/nikunj), [Peter Steinberger](https://x.com/steipete), [Dan Shipper](https://x.com/danshipper), [Aditya Agarwal](https://x.com/adityaag), [Sam Altman](https://x.com/sama), [Claude](https://x.com/claudeai)
-
-### Official Blogs (2)
-- [Anthropic Engineering](https://www.anthropic.com/engineering) — technical deep-dives from the Anthropic team
-- [Claude Blog](https://claude.com/blog) — product announcements and updates from Claude
-
-## WeChat (公众号) Source
-
-In addition to the centrally-curated podcasts, X accounts, and blogs above, this fork
-adds a fourth content channel: **Chinese WeChat (公众号) articles**.
-
-Unlike the other sources, the WeChat channel is **maintained by you**: you paste
-public article URLs into a small JSON file, and the pipeline fetches, parses, and
-remixes them on the next run. No API key required.
+The content channel is **Chinese WeChat (公众号) articles**, maintained by you:
+you paste public article URLs into a small JSON file, and the pipeline fetches,
+parses, and remixes them on the next run. No API key required.
 
 ### Maintaining your WeChat list
 
@@ -177,24 +150,22 @@ cd ~/.claude/skills/follow-builders/scripts && npm install
 - An AI agent (OpenClaw, Claude Code, or similar)
 - Internet connection (to fetch the central feed)
 
-That's it. No API keys needed. All content (blog articles + YouTube transcripts + X/Twitter posts)
-is fetched centrally and updated daily.
+That's it. No API keys needed — WeChat articles are fetched directly from
+`mp.weixin.qq.com` URLs you supply.
 
 ## How It Works
 
-1. A central feed is updated daily with the latest content from all sources
-   (blog articles via web scraping, YouTube transcripts via Supadata, X/Twitter via official API)
-2. Your agent fetches the feed — one HTTP request, no API keys
-3. Your agent remixes the raw content into a digestible summary using your preferences
+1. You maintain a list of public WeChat article URLs in `scripts/sources/wechat-input.json`
+2. `generate-feed.js` fetches each URL, extracts title / content / publish_time, and writes
+   `feed-wechat.json` (deduped via `state-feed.json:seenWechatPosts`)
+3. `prepare-digest.js` turns each item into a Builder Card and exposes the 5-field JSON
 4. The digest is delivered to your messaging app (or shown in-chat)
-
-See [examples/sample-digest.md](examples/sample-digest.md) for what the output looks like.
 
 ## Privacy
 
 - No API keys are sent anywhere — all content is fetched centrally
 - If you use Telegram/email delivery, those keys are stored locally in `~/.follow-builders/.env`
-- The skill only reads public content (public blog posts, public YouTube videos, public X posts)
+- The skill only reads public content (public WeChat articles you explicitly add to the input list)
 - Your configuration, preferences, and reading history stay on your machine
 
 ## License

@@ -8,13 +8,16 @@
 
 ## 你会得到什么
 
-每日或每周推送到你常用的通讯工具（Telegram、Discord、WhatsApp 等），包含：
+每日或每周推送到你常用的通讯工具（Telegram、Discord、WhatsApp 等）的中文公众号 Builder
+信号——不是文章全文摘要，而是 **Builder Card**：以"创作者"为单位的信号卡片，几秒就能扫完。
 
-- 顶级 AI 播客新节目的精华摘要
-- 25 位精选 AI 建造者在 X/Twitter 上的关键观点和洞察
-- AI 公司官方博客的完整文章（Anthropic Engineering、Claude Blog）
-- 所有原始内容的链接
-- 支持英文、中文或双语版本
+每张卡固定 5 个字段：
+
+- `builder_name` — 公众号 / 创作者名称
+- `insight_summary` — 1～2 句洞察提炼（100～150 字），不是全文摘要
+- `source_url` — 原文链接
+- `skills` — 技能 / 主题标签数组
+- `signal_type` — `观点 / 工具 / 案例 / 方法论` 四选一
 
 ## 快速开始
 
@@ -39,47 +42,18 @@ Agent 会询问你：
 - "把摘要写得更简短一些"
 - "显示我当前的设置"
 
-信息源列表（建造者和播客）由中心化统一管理和更新——你无需做任何操作即可获得最新的信息源。
+公众号信息源由你**自己维护**，编辑 [`scripts/sources/wechat-input.json`](scripts/sources/wechat-input.json) 即可。
+随时增删文章 URL，下一次推送会自动生效。
 
-## 自定义摘要风格
+## 自定义 Builder Card
 
-Skill 使用纯文本 prompt 文件来控制内容的摘要方式。你可以通过两种方式自定义：
+Builder Card 的 prompt 写在 [`scripts/prepare-digest.js`](scripts/prepare-digest.js) 里（搜索 `summarize_wechat`）。
+它指挥 LLM 覆写 `insight_summary` 与 `signal_type`，让卡片真正像"创作者信号"。
+直接编辑这段 prompt 就能调整语气、长度、或者你希望的 `signal_type` 取值。
 
-**通过对话（推荐）：**
-直接告诉你的 agent——"摘要写得更简练一些"、"多关注可操作的洞察"、"用更轻松的语气"。Agent 会自动帮你更新 prompt。
+## 信息源：公众号（WeChat）
 
-**直接编辑（高级用户）：**
-编辑 `prompts/` 文件夹中的文件：
-- `summarize-podcast.md` — 播客节目的摘要方式
-- `summarize-tweets.md` — X/Twitter 帖子的摘要方式
-- `summarize-blogs.md` — 博客文章的摘要方式
-- `digest-intro.md` — 整体摘要的格式和语气
-- `translate.md` — 英文内容翻译为中文的方式
-
-这些都是纯文本指令，不是代码。修改后下次推送即生效。
-
-## 默认信息源
-
-### 播客（6个）
-- [Latent Space](https://www.youtube.com/@LatentSpacePod)
-- [Training Data](https://www.youtube.com/playlist?list=PLOhHNjZItNnMm5tdW61JpnyxeYH5NDDx8)
-- [No Priors](https://www.youtube.com/@NoPriorsPodcast)
-- [Unsupervised Learning](https://www.youtube.com/@RedpointAI)
-- [The MAD Podcast with Matt Turck](https://www.youtube.com/@DataDrivenNYC)
-- [AI & I by Every](https://www.youtube.com/playlist?list=PLuMcoKK9mKgHtW_o9h5sGO2vXrffKHwJL)
-
-### X 上的 AI 建造者（25位）
-[Andrej Karpathy](https://x.com/karpathy), [Swyx](https://x.com/swyx), [Josh Woodward](https://x.com/joshwoodward), [Kevin Weil](https://x.com/kevinweil), [Peter Yang](https://x.com/petergyang), [Nan Yu](https://x.com/thenanyu), [Madhu Guru](https://x.com/realmadhuguru), [Amanda Askell](https://x.com/AmandaAskell), [Cat Wu](https://x.com/_catwu), [Thariq](https://x.com/trq212), [Google Labs](https://x.com/GoogleLabs), [Amjad Masad](https://x.com/amasad), [Guillermo Rauch](https://x.com/rauchg), [Alex Albert](https://x.com/alexalbert__), [Aaron Levie](https://x.com/levie), [Ryo Lu](https://x.com/ryolu_), [Garry Tan](https://x.com/garrytan), [Matt Turck](https://x.com/mattturck), [Zara Zhang](https://x.com/zarazhangrui), [Nikunj Kothari](https://x.com/nikunj), [Peter Steinberger](https://x.com/steipete), [Dan Shipper](https://x.com/danshipper), [Aditya Agarwal](https://x.com/adityaag), [Sam Altman](https://x.com/sama), [Claude](https://x.com/claudeai)
-
-### 官方博客（2个）
-- [Anthropic Engineering](https://www.anthropic.com/engineering) — Anthropic 团队的技术深度文章
-- [Claude Blog](https://claude.com/blog) — Claude 的产品公告与更新
-
-## 公众号信息源（WeChat）
-
-在中心化抓取的播客 / X / 博客之外，本 fork 增加了第四个内容来源：**中文公众号文章**。
-
-和其它三类信息源不同，公众号这一路是**由你自己维护**的：把公开的文章链接粘到一个 JSON 文件里，下一次运行时管线会自动抓取、解析并混编。无需 API key。
+内容来源就是**中文公众号文章**，由你自己维护：把公开的文章链接粘到一个 JSON 文件里，下一次运行时管线会自动抓取、解析并混编成 Builder Card。无需 API key。
 
 ### 维护公众号清单
 
@@ -166,22 +140,20 @@ cd ~/.claude/skills/follow-builders/scripts && npm install
 - 一个 AI agent（OpenClaw、Claude Code 或类似工具）
 - 网络连接（用于获取中心化 feed）
 
-仅此而已。不需要任何 API key。所有内容（博客文章 + YouTube 字幕 + X/Twitter 帖子）由中心化服务每日抓取更新。
+仅此而已。不需要任何 API key——公众号文章直接从你提供的 `mp.weixin.qq.com` 链接抓取。
 
 ## 工作原理
 
-1. 中心化 feed 每日更新，抓取所有信息源的最新内容（博客文章通过网页抓取，YouTube 字幕通过 Supadata，X/Twitter 通过官方 API）
-2. 你的 agent 获取 feed——一次 HTTP 请求，不需要 API key
-3. 你的 agent 根据你的偏好将原始内容重新混编为易消化的摘要
-4. 摘要推送到你的通讯工具（或直接在聊天中显示）
-
-查看 [examples/sample-digest.md](examples/sample-digest.md) 了解输出示例。
+1. 你在 `scripts/sources/wechat-input.json` 里维护要追踪的公众号文章 URL 列表
+2. `generate-feed.js` 抓取每个 URL，解析出 title / content / publish_time，写入 `feed-wechat.json`（通过 `state-feed.json:seenWechatPosts` 去重）
+3. `prepare-digest.js` 把每条内容转成 Builder Card，并输出 5 字段 JSON
+4. 推送到你的通讯工具（或直接在聊天中显示）
 
 ## 隐私
 
 - 不发送任何 API key——所有内容由中心化服务获取
 - 如果你使用 Telegram/邮件推送，相关 key 仅存储在本地 `~/.follow-builders/.env`
-- Skill 只读取公开内容（公开的博客文章、YouTube 视频和 X 帖子）
+- Skill 只读取你显式加到清单里的公开公众号文章
 - 你的配置、偏好和阅读记录都保留在你自己的设备上
 
 ## 许可证
