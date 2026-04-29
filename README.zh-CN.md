@@ -75,6 +75,74 @@ Skill 使用纯文本 prompt 文件来控制内容的摘要方式。你可以通
 - [Anthropic Engineering](https://www.anthropic.com/engineering) — Anthropic 团队的技术深度文章
 - [Claude Blog](https://claude.com/blog) — Claude 的产品公告与更新
 
+## 公众号信息源（WeChat）
+
+在中心化抓取的播客 / X / 博客之外，本 fork 增加了第四个内容来源：**中文公众号文章**。
+
+和其它三类信息源不同，公众号这一路是**由你自己维护**的：把公开的文章链接粘到一个 JSON 文件里，下一次运行时管线会自动抓取、解析并混编。无需 API key。
+
+### 维护公众号清单
+
+编辑 [`scripts/sources/wechat-input.json`](scripts/sources/wechat-input.json)：
+
+```json
+[
+  {
+    "title": "为什么我玩MCP少了？",
+    "url": "https://mp.weixin.qq.com/s/EAMCvEQxyvN_1flStlvUMg",
+    "author": "AI产品黄叔"
+  }
+]
+```
+
+### Builder Card 输出格式
+
+公众号内容在 digest 层以 **Builder Card**（创作者卡片）形式呈现——不是文章全文摘要，而是以"创作者"为单位的信号卡。每张卡固定 5 个字段：
+
+| 字段              | 说明                                          |
+|-------------------|-----------------------------------------------|
+| `builder_name`    | 公众号 / 创作者名称                           |
+| `insight_summary` | 1～2 句洞察提炼（100～150 字），不是全文摘要  |
+| `source_url`      | 原文链接                                      |
+| `skills`          | 技能 / 主题标签数组                           |
+| `signal_type`     | `观点` / `工具` / `案例` / `方法论` 四选一    |
+
+`node prepare-digest.js` 的输出示例：
+
+```json
+{
+  "builder_name": "AI产品黄叔",
+  "insight_summary": "MCP 太爽了 / 太难了 / 很重要 …",
+  "source_url": "https://mp.weixin.qq.com/s/EAMCvEQxyvN_1flStlvUMg",
+  "skills": ["Agent", "MCP", "Prompt", "智能体", "上下文"],
+  "signal_type": "工具"
+}
+```
+
+### 内部流程
+
+```
+scripts/sources/wechat-input.json
+        ↓
+scripts/sources/wechat-parser.js   （抓取 mp.weixin.qq.com，解析 title / content / publish_time）
+        ↓
+feed-wechat.json                   （通过 state-feed.json:seenWechatPosts 去重）
+        ↓
+scripts/prepare-digest.js          （insight_summary 与 signal_type 先用确定性 heuristic
+                                     生成；summarize_wechat prompt 让 LLM 在接入后覆盖它们）
+        ↓
+Builder Card  { builder_name, insight_summary, source_url, skills, signal_type }
+```
+
+本地运行：
+
+```bash
+cd scripts
+npm install
+node generate-feed.js --wechat-only
+node prepare-digest.js
+```
+
 ## 安装
 
 ### OpenClaw

@@ -82,6 +82,78 @@ These are plain English instructions, not code. Changes take effect on the next 
 - [Anthropic Engineering](https://www.anthropic.com/engineering) — technical deep-dives from the Anthropic team
 - [Claude Blog](https://claude.com/blog) — product announcements and updates from Claude
 
+## WeChat (公众号) Source
+
+In addition to the centrally-curated podcasts, X accounts, and blogs above, this fork
+adds a fourth content channel: **Chinese WeChat (公众号) articles**.
+
+Unlike the other sources, the WeChat channel is **maintained by you**: you paste
+public article URLs into a small JSON file, and the pipeline fetches, parses, and
+remixes them on the next run. No API key required.
+
+### Maintaining your WeChat list
+
+Edit [`scripts/sources/wechat-input.json`](scripts/sources/wechat-input.json):
+
+```json
+[
+  {
+    "title": "为什么我玩MCP少了？",
+    "url": "https://mp.weixin.qq.com/s/EAMCvEQxyvN_1flStlvUMg",
+    "author": "AI产品黄叔"
+  }
+]
+```
+
+### Builder Card output format
+
+WeChat content is exposed in the digest as **Builder Cards** — creator-centric
+signals, not article summaries. Each card has exactly 5 fields:
+
+| Field             | Description                                      |
+|-------------------|--------------------------------------------------|
+| `builder_name`    | 公众号 / 创作者名称                              |
+| `insight_summary` | 1–2 句洞察提炼 (100–150 字)，不是全文摘要        |
+| `source_url`      | 原文链接                                         |
+| `skills`          | 技能 / 主题标签数组                              |
+| `signal_type`     | One of `观点 / 工具 / 案例 / 方法论`             |
+
+Example output from `node prepare-digest.js`:
+
+```json
+{
+  "builder_name": "AI产品黄叔",
+  "insight_summary": "MCP 太爽了 / 太难了 / 很重要 …",
+  "source_url": "https://mp.weixin.qq.com/s/EAMCvEQxyvN_1flStlvUMg",
+  "skills": ["Agent", "MCP", "Prompt", "智能体", "上下文"],
+  "signal_type": "工具"
+}
+```
+
+### How it works
+
+```
+scripts/sources/wechat-input.json
+        ↓
+scripts/sources/wechat-parser.js   (fetch mp.weixin.qq.com, extract title/content/publish_time)
+        ↓
+feed-wechat.json                   (deduped via state-feed.json:seenWechatPosts)
+        ↓
+scripts/prepare-digest.js          (heuristic insight_summary + signal_type;
+                                    summarize_wechat prompt lets an LLM overwrite them)
+        ↓
+Builder Card  { builder_name, insight_summary, source_url, skills, signal_type }
+```
+
+Run it locally:
+
+```bash
+cd scripts
+npm install
+node generate-feed.js --wechat-only
+node prepare-digest.js
+```
+
 ## Installation
 
 ### OpenClaw
