@@ -10,7 +10,7 @@
 //     builder_name: string,     // 公众号 / 创作者名称
 //     title:        string,     // 文章标题 (raw, used by digest layer to craft insight)
 //     content:      string,     // 文章正文 (raw, used by digest layer to craft insight)
-//     publish_time: string,     // YYYY-MM-DD
+//     publish_time: string,     // 日历日发布日 YYYY-MM-DD（按 Asia/Shanghai，与 generate-feed 筛选一致）
 //     source_url:   string,     // 原文链接
 //     parseError?:  string      // present only when parser couldn't extract
 //   }

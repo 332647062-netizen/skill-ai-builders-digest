@@ -1,59 +1,36 @@
-# Digest Intro Prompt
+# Digest Intro Prompt（微信公众号每日推送）
 
-You are assembling the final digest from individual source summaries.
+You assemble **only** WeChat Official Account content (`wechat` array). Do **not** add podcasts, blogs, or X/Twitter sections.
 
-## Format
+## 输出格式：每条图文三段（贴合公众号推送阅读习惯）
 
-Start with this header (replace [Date] with today's date):
+顶部可加一行日期标题（可选）：
 
-AI Builders Digest — [Date]
+每日推送 — [Date]
 
-Then organize content in this order:
+对 `wechat` 中的 **每一条**，严格输出下面 **3 行**，行与行之间**不换多余空行**；**条目与条目之间**空一行。
 
-1. X / TWITTER section — list each builder with new posts
-2. OFFICIAL BLOGS section — list each blog post from AI company blogs (OpenAI, Anthropic, etc.)
-3. PODCASTS section — list each podcast with new episodes
+### 第 1 行 · 标题 + 公众号名
 
-## Rules
+- 先用 **`_title`**（文章标题）作为读者第一眼看到的主题。
+- 在同一行末尾加一个空格，再接 **`builder_name`**（公众号名称）。
+- 示例形态：`文章标题 公众号名称`  
+  （若标题本身已含公众号名，避免重复啰嗦，可略去末尾重复的公众号名。）
 
-- Only include sources that have new content
-- Skip any source with nothing new
-- Under each source, paste the individual summary you generated
+### 第 2 行 · 简介
 
-### Podcast links
-- After each podcast summary, include the specific video URL from the JSON `url` field
-  (e.g. https://youtube.com/watch?v=Iu4gEnZFQz8)
-- NEVER link to the channel page. Always link to the specific video.
-- Include the exact episode title from the JSON `title` field in the heading
+- 使用 JSON 里的 **`summary`**（约 200～500 汉字）。
+- 这是「公众号文章简介」口径：浓缩信号与要点，不是全文复述。
+- 若需改写以更顺口，不得捏造原文没有的事实。
 
-### Tweet author formatting
-- Use the author's full name and role/company, not just their last name
-  (e.g. "Box CEO Aaron Levie" not "Levie")
-- NEVER write Twitter handles with @ in the digest. On Telegram, @handle becomes
-  a clickable link to a Telegram user, which is wrong. Instead write handles
-  without @ (e.g. "Aaron Levie (levie on X)" or just use their full name)
-- Include the direct link to each tweet from the JSON `url` field
+### 第 3 行 · 原文链接
 
-### Blog post formatting
-- Use the blog name as a section header (e.g. "Anthropic Engineering", "OpenAI News", "Claude Blog")
-- Under each blog, list each new post with its title and summary
-- Include the author name if available
-- Include the direct link to the original article
+- 仅此一行放置 **`source_url`**（mp.weixin.qq.com 全文链接）。
+- **每条必须有链接**；没有有效 `source_url` 的条目整段省略。
 
-### Mandatory links
-- Every single piece of content MUST have an original source link
-- Blog posts: the direct article URL (e.g. https://www.anthropic.com/engineering/...)
-- Podcasts: the YouTube video URL (e.g. https://youtube.com/watch?v=xxx)
-- Tweets: the direct tweet URL (e.g. https://x.com/levie/status/xxx)
-- If you don't have a link for something, do NOT include it in the digest.
-  No link = not real = do not include.
+## 规则
 
-### No fabrication
-- Only include content that came from the feed JSON (blogs, podcasts, and tweets)
-- NEVER make up quotes, opinions, or content you think someone might have said
-- NEVER speculate about someone's silence or what they might be working on
-- If you have nothing real for a builder, skip them entirely
-
-### General
-- At the very end, add a line: "Generated through the Follow Builders skill: https://github.com/zarazhangrui/follow-builders"
-- Keep formatting clean and scannable — this will be read on a phone screen
+- **仅使用** JSON 中的 `wechat` 数据；不得编造文章或链接。
+- **`keywords`** 不必写入推送正文（除非用户明确要求）。
+- 语气：简洁、可扫读，适合手机阅读。
+- 文末可加一行：`Generated through the Follow Builders skill: https://github.com/zarazhangrui/follow-builders`

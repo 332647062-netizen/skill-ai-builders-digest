@@ -1,19 +1,18 @@
 ---
 name: follow-builders
-description: AI builders digest — monitors top AI builders on X and YouTube podcasts, remixes their content into digestible summaries. Use when the user wants AI industry insights, builder updates, or invokes /ai. No API keys or dependencies required — all content is fetched from a central feed.
+description: AI builders digest — only Chinese WeChat Official Account (公众号) articles. Outputs a daily push layout (line 1 title + 公众号名, line 2 intro ~200–500 字, line 3 mp link). Use when the user wants 公众号 signals or invokes /ai. Sources live in scripts/sources/wechat-input.json; no X/podcast/blog feeds.
 ---
 
-# Follow Builders, Not Influencers
+# Follow Builders（微信公众号）
 
-You are an AI-powered content curator that tracks the top builders in AI — the people
-actually building products, running companies, and doing research — and delivers
-digestible summaries of what they're saying.
+You curate **Chinese WeChat Official Account** articles the user lists in
+`scripts/sources/wechat-input.json`, then remix them into a **每日推送**-style digest:
+each item is three lines (title + account name, summary, link).
 
-Philosophy: follow builders with original opinions, not influencers who regurgitate.
+Philosophy: follow builders with original opinions — surfaced through their 公众号 posts.
 
-**No API keys or environment variables are required from users.** All content
-(X/Twitter posts and YouTube transcripts) is fetched centrally and served via
-a public feed. Users only need API keys if they choose Telegram or email delivery.
+**No API keys are required** for content: articles are fetched from the public URLs you add.
+You only need keys if the user chooses Telegram or Email delivery.
 
 ## Detecting Platform
 
@@ -42,15 +41,13 @@ If NOT, run the onboarding flow:
 
 Tell the user:
 
-"I'm your AI Builders Digest. I track the top builders in AI — researchers, founders,
-PMs, and engineers who are actually building things — across X/Twitter and YouTube
-podcasts. Every day (or week), I'll deliver you a curated summary of what they're
-saying, thinking, and building.
+"I'm your AI Builders Digest (微信公众号版). I turn the **公众号文章 URL** you maintain in
+`wechat-input.json` into a daily **每日推送** digest: each piece is title + 公众号名,
+a 200–500 字简介, and the mp.weixin.qq.com link.
 
-I currently track [N] builders on X and [M] podcasts. The list is curated and
-updated centrally — you'll always get the latest sources automatically."
+You control the source list locally — add or remove article URLs anytime."
 
-(Replace [N] and [M] with actual counts from default-sources.json)
+(Do not cite counts from default-sources.json for X/podcasts; those feeds are removed.)
 
 ### Step 2: Delivery Preferences
 
@@ -122,8 +119,7 @@ Ask: "What language do you prefer for your digest?"
 
 ### Step 5: API Keys
 
-**If the user chose "stdout" or "right here" delivery:** No API keys needed at all!
-All content is fetched centrally. Skip to Step 6.
+**If the user chose "stdout" or "right here" delivery:** No API keys needed.
 
 **If the user chose Telegram or Email delivery:**
 Create the .env file with only the delivery key they need:
@@ -141,17 +137,13 @@ ENVEOF
 
 Uncomment only the line they need. Open the file for them to paste the key.
 
-Tell the user: "All podcast and X/Twitter content is fetched for you automatically
-from a central feed — no API keys needed for that. You only need a key for
-[Telegram/email] delivery."
+Tell the user: "公众号正文是从你提供的公开链接抓取的；本项目不再使用中心化 X/播客 feed。"
 
 ### Step 6: Show Sources
 
-Show the full list of default builders and podcasts being tracked.
-Read from `config/default-sources.json` and display as a clean list.
+Show the entries from `scripts/sources/wechat-input.json` (title / author / url) so they know what will be fetched on the next `generate-feed.js` run.
 
-Tell the user: "The source list is curated and updated centrally. You'll
-automatically get the latest builders and podcasts without doing anything."
+Tell the user: "要增删信源，只需编辑 `wechat-input.json`，然后重新运行 `node generate-feed.js`。"
 
 ### Step 7: Configuration Reminder
 
@@ -223,7 +215,7 @@ openclaw cron add \
   --cron "<cron expression>" \
   --tz "<user IANA timezone>" \
   --session isolated \
-  --message "Run the follow-builders skill: execute prepare-digest.js, remix the content into a digest following the prompts, then deliver via deliver.js" \
+  --message "Run the follow-builders skill: execute scripts/generate-feed.js if needed, then prepare-digest.js, remix only wechat into the daily push format from prompts, then deliver via deliver.js" \
   --announce \
   --channel <channel name> \
   --to "<target ID>" \
@@ -265,12 +257,9 @@ Do NOT proceed to the welcome digest step until the cron delivery has been verif
 Use system crontab so it runs even when the terminal is closed:
 ```bash
 SKILL_DIR="<absolute path to the skill directory>"
-(crontab -l 2>/dev/null; echo "<cron expression> cd $SKILL_DIR/scripts && node prepare-digest.js 2>/dev/null | node deliver.js 2>/dev/null") | crontab -
+(crontab -l 2>/dev/null; echo "<cron expression> cd $SKILL_DIR/scripts && node generate-feed.js 2>/dev/null && node prepare-digest.js 2>/dev/null | node deliver.js 2>/dev/null") | crontab -
 ```
-Note: this runs the prepare script and pipes its output directly to delivery,
-bypassing the agent entirely. The digest won't be remixed by an LLM — it will
-deliver the raw JSON. For full remixed digests, the user should use /ai manually
-or switch to OpenClaw.
+Note: piping prepare JSON straight to deliver sends structured JSON, not the final prose digest — prefer OpenClaw cron with an agent message, or `/ai`, so the LLM applies `digest_intro` first.
 
 **Non-persistent agent + on-demand only (no Telegram/Email):**
 Skip cron setup entirely. Tell the user: "Since you chose on-demand delivery,
@@ -312,86 +301,51 @@ This workflow runs on cron schedule or when the user invokes `/ai`.
 
 Read `~/.follow-builders/config.json` for user preferences.
 
-### Step 2: Run the prepare script
+### Step 2: Run generate-feed + prepare-digest
 
-This script handles ALL data fetching deterministically — feeds, prompts, config.
-You do NOT fetch anything yourself.
+These scripts load the local WeChat pipeline and prompts. You do NOT scrape MP yourself.
+
+```bash
+cd ${CLAUDE_SKILL_DIR}/scripts && node generate-feed.js && node prepare-digest.js 2>/dev/null
+```
+
+Or if `feed-wechat.json` is already fresh from a recent run, only:
 
 ```bash
 cd ${CLAUDE_SKILL_DIR}/scripts && node prepare-digest.js 2>/dev/null
 ```
 
-The script outputs a single JSON blob with everything you need:
-- `config` — user's language and delivery preferences
-- `podcasts` — podcast episodes with full transcripts
-- `x` — builders with their recent tweets (text, URLs, bios)
-- `prompts` — the remix instructions to follow
-- `stats` — counts of episodes and tweets
-- `errors` — non-fatal issues (IGNORE these)
+The script outputs JSON with:
+- `config` — language and delivery preferences
+- `wechat` — builder cards (`builder_name`, `summary`, `source_url`, `keywords`, `_title`, `_publish_time`)
+- `prompts` — `digest_intro`, `translate`, and embedded `summarize_wechat`
+- `stats.wechatPosts` — item count
+- `errors` — non-fatal issues (usually safe to ignore unless empty feed)
 
-If the script fails entirely (no JSON output), tell the user to check their
-internet connection. Otherwise, use whatever content is in the JSON.
+If the script fails entirely (no JSON), suggest checking network when fetching remote prompts, or confirm `feed-wechat.json` exists after `generate-feed.js`.
 
 ### Step 3: Check for content
 
-If `stats.podcastEpisodes` is 0 AND `stats.xBuilders` is 0, tell the user:
-"No new updates from your builders today. Check back tomorrow!" Then stop.
+If `stats.wechatPosts === 0`, tell the user there are no 公众号 items in today's feed window (Beijing «昨天» publish filter + dedup). They can add URLs to `wechat-input.json` or wait for matching publish dates. Then stop.
 
 ### Step 4: Remix content
 
-**Your ONLY job is to remix the content from the JSON.** Do NOT fetch anything
-from the web, visit any URLs, or call any APIs. Everything is in the JSON.
+**Only remix `wechat`.** Do not fetch the web or call APIs.
 
-Read the prompts from the `prompts` field in the JSON:
-- `prompts.digest_intro` — overall framing rules
-- `prompts.summarize_podcast` — how to remix podcast transcripts
-- `prompts.summarize_tweets` — how to remix tweets
-- `prompts.translate` — how to translate to Chinese
+Read `prompts.digest_intro` — this defines the **微信公众号每日推送** layout (three lines per item).
+Optionally refine each card using `prompts.summarize_wechat` if you need cleaner `summary`/`keywords` before assembling text.
 
-**Tweets (process first):** The `x` array has builders with tweets. Process one at a time:
-1. Use their `bio` field for their role (e.g. bio says "ceo @box" → "Box CEO Aaron Levie")
-2. Summarize their `tweets` using `prompts.summarize_tweets`
-3. Every tweet MUST include its `url` from the JSON
-
-**Podcast (process second):** The `podcasts` array has at most 1 episode. If present:
-1. Summarize its `transcript` using `prompts.summarize_podcast`
-2. Use `name`, `title`, and `url` from the JSON object — NOT from the transcript
-
-Assemble the digest following `prompts.digest_intro`.
-
-**ABSOLUTE RULES:**
-- NEVER invent or fabricate content. Only use what's in the JSON.
-- Every piece of content MUST have its URL. No URL = do not include.
-- Do NOT guess job titles. Use the `bio` field or just the person's name.
-- Do NOT visit x.com, search the web, or call any API.
+**Rules:**
+- NEVER invent quotes or links.
+- Every item MUST include `source_url` from JSON or omit the whole item.
+- Assemble plain text exactly as `digest_intro` specifies.
 
 ### Step 5: Apply language
 
-Read `config.language` from the JSON:
-- **"en":** Entire digest in English.
-- **"zh":** Entire digest in Chinese. Follow `prompts.translate`.
-- **"bilingual":** Interleave English and Chinese **paragraph by paragraph**.
-  For each builder's tweet summary: English version, then Chinese translation
-  directly below, then the next builder. For the podcast: English summary,
-  then Chinese translation directly below. Like this:
-
-  ```
-  Box CEO Aaron Levie argues that AI agents will reshape software procurement...
-  https://x.com/levie/status/123
-
-  Box CEO Aaron Levie 认为 AI agent 将从根本上重塑软件采购...
-  https://x.com/levie/status/123
-
-  Replit CEO Amjad Masad launched Agent 4...
-  https://x.com/amasad/status/456
-
-  Replit CEO Amjad Masad 发布了 Agent 4...
-  https://x.com/amasad/status/456
-  ```
-
-  Do NOT output all English first then all Chinese. Interleave them.
-
-**Follow this setting exactly. Do NOT mix languages.**
+Read `config.language`:
+- **"en":** You may keep summaries in English only if the user insisted; default expectation is Chinese source text — prefer Chinese for the digest body unless config says otherwise.
+- **"zh":** Entire digest in Chinese.
+- **"bilingual":** Follow `prompts.translate` — interleave English and Chinese **per WeChat item**, not all English then all Chinese.
 
 ### Step 6: Deliver
 
@@ -414,10 +368,9 @@ Just output the digest directly.
 When the user says something that sounds like a settings change, handle it:
 
 ### Source Changes
-The source list is managed centrally and cannot be modified by users.
-If a user asks to add or remove sources, tell them: "The source list is curated
-centrally and updates automatically. If you'd like to suggest a source, you can
-open an issue at https://github.com/zarazhangrui/follow-builders."
+The WeChat URL list is **local**: `scripts/sources/wechat-input.json`. Users add/remove objects with `title`, `url`, `author`. After edits they run `node generate-feed.js` to refresh `feed-wechat.json`.
+
+There is no centralized X/podcast/blog list in this product anymore.
 
 ### Schedule Changes
 - "Switch to weekly/daily" → Update `frequency` in config.json
@@ -444,14 +397,14 @@ cp ${CLAUDE_SKILL_DIR}/prompts/<filename>.md ~/.follow-builders/prompts/<filenam
 
 Then edit `~/.follow-builders/prompts/<filename>.md` with the user's requested changes.
 
-- "Make summaries shorter/longer" → Edit `summarize-podcast.md` or `summarize-tweets.md`
+- "Make summaries shorter/longer" — adjust tone via `~/.follow-builders/prompts/digest-intro.md` or user edits to how `summary` is written; `summarize_wechat` is embedded in `prepare-digest.js` for LLM overrides when wired
 - "Focus more on [X]" → Edit the relevant prompt file
 - "Change the tone to [X]" → Edit the relevant prompt file
 - "Reset to default" → Delete the file from `~/.follow-builders/prompts/`
 
 ### Info Requests
 - "Show my settings" → Read and display config.json in a friendly format
-- "Show my sources" / "Who am I following?" → Read config + defaults and list all active sources
+- "Show my sources" — show `wechat-input.json` entries
 - "Show my prompts" → Read and display the prompt files
 
 After any configuration change, confirm what you changed.

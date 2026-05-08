@@ -9,6 +9,43 @@ what they're saying.
 **Philosophy:** Follow people who build products and have original opinions, not
 influencers who regurgitate information.
 
+## Beginner quick commands (新手使用)
+
+**Pasting only the GitHub URL into chat does not install the skill.** Run the clone and `npm install` on your machine (or let an agent with terminal access run them), then talk to your agent.
+
+### 1. Terminal — clone this repo and install script dependencies
+
+**Claude Code** (default path):
+
+```bash
+git clone https://github.com/332647062-netizen/skill-ai-builders-digest.git ~/.claude/skills/follow-builders
+cd ~/.claude/skills/follow-builders/scripts && npm install
+```
+
+**OpenClaw** — use your skills directory, e.g.:
+
+```bash
+git clone https://github.com/332647062-netizen/skill-ai-builders-digest.git ~/skills/follow-builders
+cd ~/skills/follow-builders/scripts && npm install
+```
+
+No Git? On [the repo page](https://github.com/332647062-netizen/skill-ai-builders-digest) use **Code → Download ZIP**, extract, rename the folder to `follow-builders`, move it under `~/.claude/skills/` (or `~/skills/`), then run `npm install` inside `follow-builders/scripts`. More detail: [docs/install-skill-beginners-zh.md](docs/install-skill-beginners-zh.md) (Chinese).
+
+### 2. In your AI agent — first-time onboarding
+
+After the skill is loaded, send **one** of these to start setup:
+
+- `设置关注动态` (Chinese)
+- `set up follow builders` or `/follow-builders` (English / slash command if supported)
+
+The agent will ask for digest frequency & time, timezone, language, and delivery. Copy-paste cheat sheet: [docs/user-ai-prompts-zh.md](docs/user-ai-prompts-zh.md) (Chinese).
+
+### WeWe RSS (optional)
+
+If you use **WeWe RSS** for official-account feeds, maintain `scripts/sources/wechat-rss-input.json`, or run `npm run sync-wechat-rss` from the `scripts/` directory — see [docs/wechat-wewe-rss-iteration.md](docs/wechat-wewe-rss-iteration.md).
+
+---
+
 ## What You Get
 
 A daily or weekly digest of **Chinese WeChat (公众号) AI builders**, delivered to your
@@ -100,6 +137,13 @@ Example output from `node prepare-digest.js`:
 }
 ```
 
+### Publish window (Asia/Shanghai)
+
+- Parsed **`publish_time`** is always a **calendar date `YYYY-MM-DD` in `Asia/Shanghai`** (Beijing time).
+- **`generate-feed.js` keeps only articles whose publish date equals the calendar day immediately before “today” in Shanghai.** So **today’s digest run corresponds to articles officially published “yesterday” in Beijing**, matching a typical daily push rhythm.
+- `feed-wechat.json` includes **`wechatPublishDayBeijing`** with that target date. **`prepare-digest.js`** echoes it under **`stats.wechatPublishDayBeijing`**.
+- For debugging, set **`WECHAT_TARGET_PUBLISH_DAY=YYYY-MM-DD`** to force that date instead of computed yesterday.
+
 ### How it works
 
 ```
@@ -120,32 +164,39 @@ Run it locally:
 ```bash
 cd scripts
 npm install
-node generate-feed.js --wechat-only
+node generate-feed.js
 node prepare-digest.js
 ```
 
 ## Installation
+
+Default clone target for this fork:
+
+- HTTPS: `https://github.com/332647062-netizen/skill-ai-builders-digest.git`
+- SSH: `git@github.com:332647062-netizen/skill-ai-builders-digest.git`
+
+Upstream template: [zarazhangrui/follow-builders](https://github.com/zarazhangrui/follow-builders).
 
 ### OpenClaw
 ```bash
 # From ClawhHub (coming soon)
 clawhub install follow-builders
 
-# Or manually
-git clone https://github.com/zarazhangrui/follow-builders.git ~/skills/follow-builders
+# Or manually (this fork)
+git clone https://github.com/332647062-netizen/skill-ai-builders-digest.git ~/skills/follow-builders
 cd ~/skills/follow-builders/scripts && npm install
 ```
 
 ### Claude Code
 ```bash
-git clone https://github.com/zarazhangrui/follow-builders.git ~/.claude/skills/follow-builders
+git clone https://github.com/332647062-netizen/skill-ai-builders-digest.git ~/.claude/skills/follow-builders
 cd ~/.claude/skills/follow-builders/scripts && npm install
 ```
 
 ## Requirements
 
 - An AI agent (OpenClaw, Claude Code, or similar)
-- Internet connection (to fetch the central feed)
+- Internet connection (to fetch article HTML from URLs you list)
 
 That's it. No API keys needed — WeChat articles are fetched directly from
 `mp.weixin.qq.com` URLs you supply.
@@ -153,7 +204,7 @@ That's it. No API keys needed — WeChat articles are fetched directly from
 ## How It Works
 
 1. You maintain a list of public WeChat article URLs in `scripts/sources/wechat-input.json`
-2. `generate-feed.js` fetches each URL, extracts title / content / publish_time, and writes
+2. `generate-feed.js` fetches each URL, extracts title / content / publish_time, keeps items whose **`publish_time` calendar date equals Beijing “yesterday”**, and writes
    `feed-wechat.json` (deduped via `state-feed.json:seenWechatPosts`)
 3. `prepare-digest.js` turns each item into a Builder Card and exposes the 4-field JSON
 4. The digest is delivered to your messaging app (or shown in-chat)

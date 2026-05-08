@@ -1,5 +1,25 @@
 [
   {
+    "builder_name": "赛博禅心",
+    "platform": "wechat",
+    "feed_url": "http://123.56.17.118:4000/feeds/MP_WXS_3934419561"
+  },
+  {
+    "builder_name": "数字生命卡兹克",
+    "platform": "wechat",
+    "feed_url": "http://123.56.17.118:4000/feeds/MP_WXS_3223096120"
+  },
+  {
+    "builder_name": "云中江树",
+    "platform": "wechat",
+    "feed_url": "http://123.56.17.118:4000/feeds/MP_WXS_3016599109"
+  },
+  {
+    "builder_name": "AI产品阿颖",
+    "platform": "wechat",
+    "feed_url": "http://123.56.17.118:4000/feeds/MP_WXS_3892772220"
+  },
+  {
     "builder_name": "AI产品黄叔",
     "platform": "wechat",
     "feed_url": "http://123.56.17.118:4000/feeds/MP_WXS_2398553439"

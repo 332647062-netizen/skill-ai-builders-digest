@@ -6,6 +6,43 @@
 
 **理念：** 追踪那些真正在做产品、有独立见解的人，而非只会搬运信息的网红。
 
+## 新手使用指令
+
+**只把 GitHub 链接发给 AI 并不能完成安装。** 需要在你自己的电脑上执行（或授权会用终端的 Agent 执行）下面的克隆与 `npm install`，装好后再在对话里做首次引导。
+
+### 1. 终端里：克隆本仓库并安装脚本依赖
+
+**Claude Code**（常用路径）：
+
+```bash
+git clone https://github.com/332647062-netizen/skill-ai-builders-digest.git ~/.claude/skills/follow-builders
+cd ~/.claude/skills/follow-builders/scripts && npm install
+```
+
+**OpenClaw**（示例路径，以你客户端说明为准）：
+
+```bash
+git clone https://github.com/332647062-netizen/skill-ai-builders-digest.git ~/skills/follow-builders
+cd ~/skills/follow-builders/scripts && npm install
+```
+
+不会用 Git？在仓库页 **[Code → Download ZIP](https://github.com/332647062-netizen/skill-ai-builders-digest)** 下载解压，文件夹建议改名为 `follow-builders`，再放到 `~/.claude/skills/` 或 `~/skills/` 下，然后在 `follow-builders/scripts` 里执行 `npm install`。详见 [docs/install-skill-beginners-zh.md](docs/install-skill-beginners-zh.md)。
+
+### 2. 安装 Skill 之后 — 首次引导
+
+向 AI **任选一条**发送即可开始 onboarding：
+
+- 中文：`设置关注动态` / `帮我配置微信公众号摘要推送`
+- 英文：`set up follow builders`；若支持斜杠：`/follow-builders`
+
+智能体会继续问你推送频率、时区、语言、发送方式等。更多可复制指令见 [docs/user-ai-prompts-zh.md](docs/user-ai-prompts-zh.md)。
+
+### WeWe RSS（可选）
+
+使用自建 [WeWe RSS](docs/wechat-wewe-rss-iteration.md) 时，请维护 `scripts/sources/wechat-rss-input.json`，或在 `scripts` 目录执行 `npm run sync-wechat-rss` 从 `GET /feeds` 同步订阅列表。
+
+---
+
 ## 你会得到什么
 
 每日或每周推送到你常用的通讯工具（Telegram、Discord、WhatsApp 等）的中文公众号 Builder
@@ -29,7 +66,7 @@ Agent 会询问你：
 - 语言偏好
 - 推送方式（Telegram、邮件或直接在聊天中显示）
 
-不需要任何 API key——所有内容由中心化服务统一抓取。
+不需要公众号 API key——文章从你提供的公开链接抓取。
 设置完成后，你的第一期摘要会立即推送。
 
 ## 修改设置
@@ -90,6 +127,14 @@ Builder Card 的 prompt 写在 [`scripts/prepare-digest.js`](scripts/prepare-dig
 }
 ```
 
+### 推送窗口（北京时间）
+
+- `wechat-parser.js` 从网页解析 **`publish_time`**，统一为 **Asia/Shanghai（北京时间）下的日历日** `YYYY-MM-DD`。
+- **`generate-feed.js` 只把「发布日历日 = 北京时间当天的前一天（昨天）」的文章写入 `feed-wechat.json`。**  
+  换言之：**你今天生成的推送内容，对应的是北京时间昨天上架的那批公众号图文**（与推文「每日推送」节奏一致）。
+- `feed-wechat.json` 里的 **`wechatPublishDayBeijing`** 标明这一次筛选使用的目标日期。
+- 调试时可设环境变量 **`WECHAT_TARGET_PUBLISH_DAY=YYYY-MM-DD`** 临时指定目标日（不写则始终用昨天）。
+
 ### 内部流程
 
 ```
@@ -110,25 +155,32 @@ Builder Card  { builder_name, summary, source_url, keywords }
 ```bash
 cd scripts
 npm install
-node generate-feed.js --wechat-only
+node generate-feed.js
 node prepare-digest.js
 ```
 
 ## 安装
+
+本 fork 默认克隆地址：
+
+- HTTPS：`https://github.com/332647062-netizen/skill-ai-builders-digest.git`
+- SSH：`git@github.com:332647062-netizen/skill-ai-builders-digest.git`
+
+上游模板：[zarazhangrui/follow-builders](https://github.com/zarazhangrui/follow-builders)。
 
 ### OpenClaw
 ```bash
 # 从 ClawhHub 安装（即将上线）
 clawhub install follow-builders
 
-# 或手动安装
-git clone https://github.com/zarazhangrui/follow-builders.git ~/skills/follow-builders
+# 或手动安装（本仓库）
+git clone https://github.com/332647062-netizen/skill-ai-builders-digest.git ~/skills/follow-builders
 cd ~/skills/follow-builders/scripts && npm install
 ```
 
 ### Claude Code
 ```bash
-git clone https://github.com/zarazhangrui/follow-builders.git ~/.claude/skills/follow-builders
+git clone https://github.com/332647062-netizen/skill-ai-builders-digest.git ~/.claude/skills/follow-builders
 cd ~/.claude/skills/follow-builders/scripts && npm install
 ```
 
