@@ -4,11 +4,13 @@
 // Stage 2 MVP: given a 公众号文章 URL, fetch the HTML and extract:
 //   - title         (from og:title or #activity-name)
 //   - content       (plain-text from #js_content)
-//   - publish_time  (YYYY-MM-DD, from var ct / var publish_time / #publish_time)
+//   - publish_time  (YYYY-MM-DD 北京时间日历日；ct 时间戳按 Asia/Shanghai 换算)
 //
 // We do NOT attempt to bypass anti-bot. If the fetch fails or fields are
 // missing, we return whatever we got — the caller can decide what to do.
 // ============================================================================
+
+import { ymdInShanghai } from "./shanghai-date.js";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
@@ -59,12 +61,18 @@ function extractPublishTime(html) {
   const ct = html.match(/var\s+ct\s*=\s*["'](\d+)["']/);
   if (ct) {
     const ts = parseInt(ct[1], 10) * 1000;
-    if (!Number.isNaN(ts)) return new Date(ts).toISOString().slice(0, 10);
+    if (!Number.isNaN(ts)) return ymdInShanghai(ts);
   }
 
   // Some templates use: var publish_time = "2026-04-24" (YYYY-MM-DD or full ISO)
   const pt = html.match(/var\s+publish_time\s*=\s*["']([^"']+)["']/);
-  if (pt) return pt[1].slice(0, 10);
+  if (pt) {
+    const raw = pt[1].trim();
+    if (raw.includes("T") && !Number.isNaN(Date.parse(raw))) {
+      return ymdInShanghai(Date.parse(raw));
+    }
+    return raw.slice(0, 10);
+  }
 
   // Fallback: visible <em id="publish_time"> tag
   const em = html.match(/id=["']publish_time["'][^>]*>([^<]+)</);

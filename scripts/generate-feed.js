@@ -6,8 +6,9 @@
 // Runs on GitHub Actions (daily at 6am UTC) to fetch content and publish
 // feed-x.json, feed-podcasts.json, and feed-blogs.json.
 //
-// Deduplication: tracks previously seen tweet IDs, episode GUIDs, and article
-// URLs in state-feed.json so content is never repeated across runs.
+// Deduplication: tracks previously seen tweet IDs, episode GUIDs, article
+// URLs, and WeChat posts in state-feed.json so content is not repeated across runs.
+// WeChat posts are also filtered to publish_time === yesterday in Asia/Shanghai (北京时间).
 //
 // Usage: node generate-feed.js [--tweets-only | --podcasts-only | --blogs-only]
 // Env vars needed: X_BEARER_TOKEN, POD2TXT_API_KEY
@@ -17,6 +18,7 @@ import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
 import { loadWechatSources } from "./sources/wechat.js";
+import { yesterdayShanghaiYmd } from "./sources/shanghai-date.js";
 
 // -- Constants ---------------------------------------------------------------
 
@@ -31,7 +33,6 @@ const PODCAST_LOOKBACK_HOURS = 336; // 14 days — podcasts publish weekly/biwee
 const BLOG_LOOKBACK_HOURS = 72;
 const MAX_TWEETS_PER_USER = 3;
 const MAX_ARTICLES_PER_BLOG = 3;
-
 // State file lives in the repo root so it gets committed by GitHub Actions
 const SCRIPT_DIR = decodeURIComponent(new URL(".", import.meta.url).pathname);
 const STATE_PATH = join(SCRIPT_DIR, "..", "state-feed.json");
@@ -1111,6 +1112,11 @@ async function main() {
   if (runWechat && sources.wechat && sources.wechat.length > 0) {
     console.error("Building WeChat builder-card feed...");
 
+    const wechatPublishDayBeijing = yesterdayShanghaiYmd();
+    console.error(
+      `  WeChat publish window (北京时间，日历「昨天」): ${wechatPublishDayBeijing}`,
+    );
+
     // Identity = builder + title + publish_time → stable across runs.
     const idOf = (it) =>
       `${it.builder_name}::${it.title}::${it.publish_time || ""}`;
@@ -1119,6 +1125,31 @@ async function main() {
     let dedupSkipped = 0;
     for (const it of sources.wechat) {
       const id = idOf(it);
+      const pub =
+        it.publish_time && it.publish_time.length >= 10
+          ? it.publish_time.slice(0, 10)
+          : null;
+      if (!pub) {
+        console.error(
+          `  - skip (no publish_time): ${it.builder_name} / ${it.title}`,
+        );
+        continue;
+      }
+      if (pub !== wechatPublishDayBeijing) {
+        if (pub < wechatPublishDayBeijing) {
+          if (!state.seenWechatPosts[id]) {
+            state.seenWechatPosts[id] = Date.now();
+          }
+          console.error(
+            `  - skip (publish ${pub}, want ${wechatPublishDayBeijing}): ${it.builder_name} / ${it.title}`,
+          );
+        } else {
+          console.error(
+            `  - skip (publish ${pub}, not yesterday Beijing yet): ${it.builder_name} / ${it.title}`,
+          );
+        }
+        continue;
+      }
       if (state.seenWechatPosts[id]) {
         dedupSkipped++;
         console.error(`  - skip (seen): ${it.builder_name} / ${it.title}`);
@@ -1139,6 +1170,7 @@ async function main() {
 
     const wechatFeed = {
       generatedAt: new Date().toISOString(),
+      wechatPublishDayBeijing,
       wechat: wechatItems,
       stats: { wechatPosts: wechatItems.length, dedupSkipped },
     };
