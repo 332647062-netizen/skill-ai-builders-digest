@@ -4,7 +4,7 @@
 // Follow Builders — Prepare Digest
 // ============================================================================
 // Gathers everything the LLM needs to produce a digest:
-// - Fetches the central feeds (tweets + podcasts)
+// - Reads local feed-wechat.json (微信公众号，由 generate-feed.js 生成)
 // - Fetches the latest prompts from GitHub
 // - Reads the user's config (language, delivery method)
 // - Outputs a single JSON blob to stdout
@@ -16,7 +16,7 @@
 // Output: JSON to stdout
 // ============================================================================
 
-import { readFile, mkdir } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -26,16 +26,12 @@ import { homedir } from 'os';
 const USER_DIR = join(homedir(), '.follow-builders');
 const CONFIG_PATH = join(USER_DIR, 'config.json');
 
-const FEED_X_URL = 'https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-x.json';
-const FEED_PODCASTS_URL = 'https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-podcasts.json';
-const FEED_BLOGS_URL = 'https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-blogs.json';
-
-// MVP: WeChat feed is produced locally by generate-feed.js (mock source).
+// WeChat feed is produced locally by generate-feed.js.
 // We don't fetch it from the central GitHub repo yet.
 const SCRIPT_DIR_PATH = decodeURIComponent(new URL('.', import.meta.url).pathname);
 const LOCAL_FEED_WECHAT = join(SCRIPT_DIR_PATH, '..', 'feed-wechat.json');
 
-// Lightweight keyword bank used to extract `keywords` from raw content.
+// Lightweight keyword bank used to extract `skills` tags from raw content.
 // Keep this small and explicit — Stage 1 only needs to prove the pipeline.
 const SKILL_KEYWORDS = [
   'Agent Workflow',
@@ -64,7 +60,7 @@ const SKILL_KEYWORDS = [
   '向量',
 ];
 
-// Extract 3~6 keywords from text by matching the SKILL_KEYWORDS bank.
+// Extract 3~6 skill tags from text by matching the SKILL_KEYWORDS bank.
 // Order is preserved (bank order = priority). Capped at 6.
 function extractKeywords(text) {
   if (!text) return [];
@@ -100,26 +96,18 @@ function buildSummary(content, title) {
 }
 
 const PROMPTS_BASE = 'https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/prompts';
-const PROMPT_FILES = [
-  'summarize-podcast.md',
-  'summarize-tweets.md',
-  'summarize-blogs.md',
-  'digest-intro.md',
-  'translate.md'
-];
+const PROMPT_FILES = ['digest-intro.md', 'translate.md'];
 
 // -- Fetch helpers -----------------------------------------------------------
 
-async function fetchJSON(url) {
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  return res.json();
-}
-
 async function fetchText(url) {
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  return res.text();
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return res.text();
+  } catch {
+    return null;
+  }
 }
 
 // -- Main --------------------------------------------------------------------
@@ -141,18 +129,7 @@ async function main() {
     }
   }
 
-  // 2. Fetch all three feeds
-  const [feedX, feedPodcasts, feedBlogs] = await Promise.all([
-    fetchJSON(FEED_X_URL),
-    fetchJSON(FEED_PODCASTS_URL),
-    fetchJSON(FEED_BLOGS_URL)
-  ]);
-
-  if (!feedX) errors.push('Could not fetch tweet feed');
-  if (!feedPodcasts) errors.push('Could not fetch podcast feed');
-  if (!feedBlogs) errors.push('Could not fetch blog feed');
-
-  // 2b. Load local WeChat feed (Stage 1 mock — produced by generate-feed.js)
+  // 2. Load local WeChat feed (produced by generate-feed.js)
   let feedWechat = null;
   if (existsSync(LOCAL_FEED_WECHAT)) {
     try {
@@ -165,7 +142,7 @@ async function main() {
   }
 
   // Build Builder Cards. Each card has 4 fields by contract:
-  //   builder_name / summary / source_url / keywords
+  //   builder_name / summary / source_url / skills
   // summary is pre-filled by a 200~500 字符 heuristic so the pipeline runs
   // without an LLM; the summarize_wechat prompt tells the LLM to overwrite
   // it with a real distilled summary once wired in.
@@ -173,7 +150,7 @@ async function main() {
     builder_name: it.builder_name,
     summary: buildSummary(it.content, it.title),
     source_url: it.source_url || null,
-    keywords: extractKeywords(`${it.title} ${it.content}`),
+    skills: extractKeywords(`${it.title} ${it.content}`),
     // Raw fields kept for the LLM step that may want richer context:
     _title: it.title,
     _publish_time: it.publish_time,
@@ -216,36 +193,33 @@ async function main() {
     }
   }
 
-  // Builder Card prompt. Output is creator-centric, 4 fields exactly.
+  // Builder Card prompt — 供 LLM 精炼字段；最终推文排版跟 prompts.digest_intro（每日推送三线格式）
   prompts.summarize_wechat = [
-    '# WeChat Builder Card Prompt',
+    '# 微信公众号 Builder Card',
     '',
-    '你在把中文公众号文章转换为 Builder Card —— 以"创作者"为单位的信号卡片。',
+    '把每条中文公众号文章整理成下列字段，供「每日推送」排版使用。',
     '',
-    '## 针对每条内容，输出 4 个字段',
+    '## 字段',
     '',
-    '1. builder_name — 公众号 / 创作者名称（保留原始名字）',
-    '2. summary — 公众号文章内容简介，200~500 字符。不是全文摘要，而是核心要点的浓缩，',
-    '   让读者 30 秒内知道这位 builder 在说什么、给出了什么信号',
-    '3. source_url — 原文链接',
-    '4. keywords — 文章关键字数组，3~6 个，技术 / 主题 / 方法相关的词',
-    '   (例如 ["MCP", "Agent Workflow", "Prompt Engineering"])',
+    '1. builder_name — 公众号名称（与原文一致）',
+    '2. summary — 文章简介，200~500 汉字；浓缩核心观点与信号，不要全文复述',
+    '3. source_url — mp.weixin.qq.com 原文链接',
+    '4. skills — 可选，3~6 个技术/方法类主题词（digest 正文可不展示，仅作检索）',
     '',
-    '## 输出 JSON 结构',
+    '## JSON 示例',
     '',
     '{',
     '  "builder_name": "AI产品黄叔",',
-    '  "summary": "...",',
+    '  "summary": "…",',
     '  "source_url": "https://mp.weixin.qq.com/s/...",',
-    '  "keywords": ["MCP", "Agent", "工作流"]',
+    '  "skills": ["MCP", "Agent", "工作流"]',
     '}',
     '',
     '## 规则',
     '',
-    '- summary 不要"在本文中作者讨论了..."这种套话，直接给信号',
-    '- keywords 只放技术 / 方法 / 角色相关的词，不要放 "AI" / "未来" 这种泛词',
-    '- keywords 严格控制在 3~6 个；多于 6 个时只保留最高频/最重要的',
-    '- 如果你不能从原文里读到清晰信号，宁可让 summary 短一点，不要瞎编',
+    '- summary 禁止空话套话（如「本文讨论了」），直接写干货',
+    '- skills 不放泛词（如单独「AI」「未来」）',
+    '- 读不懂原文宁可 summary 略短，禁止编造',
     ''
   ].join('\n');
 
@@ -261,25 +235,16 @@ async function main() {
       delivery: config.delivery || { method: 'stdout' }
     },
 
-    // Content to remix
-    podcasts: feedPodcasts?.podcasts || [],
-    x: feedX?.x || [],
-    blogs: feedBlogs?.blogs || [],
+    // Content to remix（仅微信公众号）
     wechat: wechatItems,
 
-    // Stats for the LLM to reference
     stats: {
-      podcastEpisodes: feedPodcasts?.podcasts?.length || 0,
-      xBuilders: feedX?.x?.length || 0,
-      totalTweets: (feedX?.x || []).reduce((sum, a) => sum + a.tweets.length, 0),
-      blogPosts: feedBlogs?.blogs?.length || 0,
       wechatPosts: wechatItems.length,
-      feedGeneratedAt:
-        feedX?.generatedAt ||
-        feedPodcasts?.generatedAt ||
-        feedBlogs?.generatedAt ||
-        feedWechat?.generatedAt ||
-        null
+      wechatPublishDayBeijing: feedWechat?.wechatPublishDayBeijing ?? null,
+      wechatPublishWindowBeijing:
+        feedWechat?.wechatPublishWindowBeijing ?? null,
+      wechatLookbackDays: feedWechat?.wechatLookbackDays ?? null,
+      feedGeneratedAt: feedWechat?.generatedAt || null
     },
 
     // Prompts — the LLM reads these and follows the instructions

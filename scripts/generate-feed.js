@@ -4,21 +4,70 @@
 // Follow Builders — Central Feed Generator
 // ============================================================================
 // Runs on GitHub Actions (daily at 6am UTC) to fetch content and publish
-// feed-x.json, feed-podcasts.json, and feed-blogs.json.
+// feed-wechat.json（微信公众号）为主产物。
 //
-// Deduplication: tracks previously seen tweet IDs, episode GUIDs, article
-// URLs, and WeChat posts in state-feed.json so content is not repeated across runs.
-// WeChat posts are also filtered to publish_time === yesterday in Asia/Shanghai (北京时间).
+// Deduplication: tracks WeChat posts in state-feed.json so content is not repeated across runs.
+// WeChat posts are filtered to a Beijing-calendar window (default: 昨天起向前 WECHAT_LOOKBACK_DAYS 天，含端点).
 //
-// Usage: node generate-feed.js [--tweets-only | --podcasts-only | --blogs-only]
-// Env vars needed: X_BEARER_TOKEN, POD2TXT_API_KEY
+// Usage: node generate-feed.js
+// Optional:
+//   WECHAT_LOOKBACK_DAYS=3 — 默认 1（窗口仅为「昨天」一天）
+//   WECHAT_TARGET_PUBLISH_DAY=YYYY-MM-DD — 只收录该日（测录用，覆盖窗口）
+//   RESET_SEEN=true — 忽略 state-feed.json 中公众号 seen（便于重复测同一篇）
 // ============================================================================
 
 import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
 import { loadWechatSources } from "./sources/wechat.js";
-import { yesterdayShanghaiYmd } from "./sources/shanghai-date.js";
+import {
+  loadWechatRssSources,
+  readWechatRssInputList,
+} from "./sources/wechat-rss.js";
+import {
+  addCalendarDaysShanghai,
+  yesterdayShanghaiYmd,
+} from "./sources/shanghai-date.js";
+
+function resolveWechatLookbackDays() {
+  const raw = process.env.WECHAT_LOOKBACK_DAYS?.trim();
+  const n = raw ? Number.parseInt(raw, 10) : 1;
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return n;
+}
+
+/**
+ * 返回北京时间 inclusive 窗口 [startYmd, endYmd]。
+ * 默认：end = 昨天，start = 昨天向前 (lookbackDays-1) 天。
+ * 设 WECHAT_TARGET_PUBLISH_DAY 时：窗口退化为单日。
+ */
+function resolveWechatPublishWindowBeijing() {
+  const override = process.env.WECHAT_TARGET_PUBLISH_DAY?.trim();
+  if (override && /^\d{4}-\d{2}-\d{2}$/.test(override)) {
+    console.error(
+      `  WeChat publish window (override WECHAT_TARGET_PUBLISH_DAY): ${override} only`,
+    );
+    return {
+      startYmd: override,
+      endYmd: override,
+      lookbackDays: 1,
+    };
+  }
+
+  const lookbackDays = resolveWechatLookbackDays();
+  const endYmd = yesterdayShanghaiYmd();
+  const startYmd = addCalendarDaysShanghai(endYmd, -(lookbackDays - 1));
+
+  console.error(
+    `  WeChat publish window (北京时间): ${startYmd} .. ${endYmd} (WECHAT_LOOKBACK_DAYS=${lookbackDays})`,
+  );
+  return { startYmd, endYmd, lookbackDays };
+}
+
+function shouldResetWechatSeen() {
+  const v = process.env.RESET_SEEN?.trim().toLowerCase();
+  return v === "true" || v === "1" || v === "yes";
+}
 
 // -- Constants ---------------------------------------------------------------
 
@@ -992,130 +1041,42 @@ async function fetchBlogContent(blogs, state, errors) {
 // -- Main --------------------------------------------------------------------
 
 async function main() {
-  const args = process.argv.slice(2);
-  const tweetsOnly = args.includes("--tweets-only");
-  const podcastsOnly = args.includes("--podcasts-only");
-  const blogsOnly = args.includes("--blogs-only");
-  const wechatOnly = args.includes("--wechat-only");
-  const anyOnlyFlag = tweetsOnly || podcastsOnly || blogsOnly || wechatOnly;
-
-  // If a specific --*-only flag is set, only that feed type runs.
-  // If no flag is set, all sources run.
-  const runTweets = tweetsOnly || !anyOnlyFlag;
-  const runPodcasts = podcastsOnly || !anyOnlyFlag;
-  const runBlogs = blogsOnly || !anyOnlyFlag;
-  const runWechat = wechatOnly || !anyOnlyFlag;
-
-  const xBearerToken = process.env.X_BEARER_TOKEN;
-  const pod2txtKey = process.env.POD2TXT_API_KEY;
-
-  // MVP: if API keys are missing, skip those sources instead of exiting,
-  // so the wechat mock source can still flow through to feed-wechat.json.
-  const skipTweets = runTweets && !xBearerToken;
-  const skipPodcasts = runPodcasts && !pod2txtKey;
-  if (skipTweets) console.error("X_BEARER_TOKEN not set — skipping tweets");
-  if (skipPodcasts)
-    console.error("POD2TXT_API_KEY not set — skipping podcasts");
-
+  // 仅生成微信公众号 feed（不再拉取 X / 播客 / 博客）。
   const sources = await loadSources();
   const state = await loadState();
-  const errors = [];
 
-  if (runWechat) {
-    console.error("Loading WeChat sources from sources/wechat-input.json...");
+  const rssInputList = await readWechatRssInputList();
+  const rssWantsFetch = rssInputList.some((row) => {
+    const u = (row.feed_url || "").trim();
+    return u && !/REPLACE_WITH_FEED_ID|\/xxx\//i.test(u);
+  });
+
+  if (rssWantsFetch) {
+    console.error(
+      "Loading WeChat sources from sources/wechat-rss-input.json (WeWe RSS)...",
+    );
+    sources.wechat = await loadWechatRssSources({
+      userAgent: RSS_USER_AGENT,
+    });
+  } else {
+    console.error(
+      "Loading WeChat sources from sources/wechat-input.json (legacy URL list)...",
+    );
     sources.wechat = await loadWechatSources();
   }
 
-  // Fetch tweets
-  if (runTweets && !skipTweets) {
-    console.error("Fetching X/Twitter content...");
-    const xContent = await fetchXContent(
-      sources.x_accounts,
-      xBearerToken,
-      state,
-      errors,
-    );
-    console.error(`  Found ${xContent.length} builders with new tweets`);
-
-    const totalTweets = xContent.reduce((sum, a) => sum + a.tweets.length, 0);
-    const xFeed = {
-      generatedAt: new Date().toISOString(),
-      lookbackHours: TWEET_LOOKBACK_HOURS,
-      x: xContent,
-      stats: { xBuilders: xContent.length, totalTweets },
-      errors:
-        errors.filter((e) => e.startsWith("X API")).length > 0
-          ? errors.filter((e) => e.startsWith("X API"))
-          : undefined,
-    };
-    await writeFile(
-      join(SCRIPT_DIR, "..", "feed-x.json"),
-      JSON.stringify(xFeed, null, 2),
-    );
-    console.error(
-      `  feed-x.json: ${xContent.length} builders, ${totalTweets} tweets`,
-    );
-  }
-
-  // Fetch podcasts
-  if (runPodcasts && !skipPodcasts) {
-    console.error("Fetching podcast content (RSS + pod2txt)...");
-    const podcasts = await fetchPodcastContent(
-      sources.podcasts,
-      pod2txtKey,
-      state,
-      errors,
-    );
-    console.error(`  Found ${podcasts.length} new episodes`);
-
-    const podcastFeed = {
-      generatedAt: new Date().toISOString(),
-      lookbackHours: PODCAST_LOOKBACK_HOURS,
-      podcasts,
-      stats: { podcastEpisodes: podcasts.length },
-      errors:
-        errors.filter((e) => e.startsWith("Podcast")).length > 0
-          ? errors.filter((e) => e.startsWith("Podcast"))
-          : undefined,
-    };
-    await writeFile(
-      join(SCRIPT_DIR, "..", "feed-podcasts.json"),
-      JSON.stringify(podcastFeed, null, 2),
-    );
-    console.error(`  feed-podcasts.json: ${podcasts.length} episodes`);
-  }
-
-  // Fetch blog posts
-  if (runBlogs && sources.blogs && sources.blogs.length > 0) {
-    console.error("Fetching blog content...");
-    const blogContent = await fetchBlogContent(sources.blogs, state, errors);
-    console.error(`  Found ${blogContent.length} new blog post(s)`);
-
-    const blogFeed = {
-      generatedAt: new Date().toISOString(),
-      lookbackHours: BLOG_LOOKBACK_HOURS,
-      blogs: blogContent,
-      stats: { blogPosts: blogContent.length },
-      errors:
-        errors.filter((e) => e.startsWith("Blog")).length > 0
-          ? errors.filter((e) => e.startsWith("Blog"))
-          : undefined,
-    };
-    await writeFile(
-      join(SCRIPT_DIR, "..", "feed-blogs.json"),
-      JSON.stringify(blogFeed, null, 2),
-    );
-    console.error(`  feed-blogs.json: ${blogContent.length} posts`);
-  }
-
-  // Fetch WeChat content. Stage 2: real article fetch via wechat-parser.
-  if (runWechat && sources.wechat && sources.wechat.length > 0) {
+  // WeChat：写入落在「北京时间发布窗口」内的条目，并按 state-feed.json 去重。
+  if (sources.wechat && sources.wechat.length > 0) {
     console.error("Building WeChat builder-card feed...");
 
-    const wechatPublishDayBeijing = yesterdayShanghaiYmd();
-    console.error(
-      `  WeChat publish window (北京时间，日历「昨天」): ${wechatPublishDayBeijing}`,
-    );
+    const { startYmd, endYmd, lookbackDays } =
+      resolveWechatPublishWindowBeijing();
+    const resetSeen = shouldResetWechatSeen();
+    if (resetSeen) {
+      console.error(
+        "  RESET_SEEN=true — skipping seenWechatPosts dedup for this run",
+      );
+    }
 
     // Identity = builder + title + publish_time → stable across runs.
     const idOf = (it) =>
@@ -1135,22 +1096,22 @@ async function main() {
         );
         continue;
       }
-      if (pub !== wechatPublishDayBeijing) {
-        if (pub < wechatPublishDayBeijing) {
-          if (!state.seenWechatPosts[id]) {
-            state.seenWechatPosts[id] = Date.now();
-          }
-          console.error(
-            `  - skip (publish ${pub}, want ${wechatPublishDayBeijing}): ${it.builder_name} / ${it.title}`,
-          );
-        } else {
-          console.error(
-            `  - skip (publish ${pub}, not yesterday Beijing yet): ${it.builder_name} / ${it.title}`,
-          );
+      if (pub < startYmd) {
+        if (!state.seenWechatPosts[id]) {
+          state.seenWechatPosts[id] = Date.now();
         }
+        console.error(
+          `  - skip (publish ${pub}, before window ${startYmd}..${endYmd}): ${it.builder_name} / ${it.title}`,
+        );
         continue;
       }
-      if (state.seenWechatPosts[id]) {
+      if (pub > endYmd) {
+        console.error(
+          `  - skip (publish ${pub}, after window end ${endYmd}): ${it.builder_name} / ${it.title}`,
+        );
+        continue;
+      }
+      if (!resetSeen && state.seenWechatPosts[id]) {
         dedupSkipped++;
         console.error(`  - skip (seen): ${it.builder_name} / ${it.title}`);
         continue;
@@ -1170,7 +1131,9 @@ async function main() {
 
     const wechatFeed = {
       generatedAt: new Date().toISOString(),
-      wechatPublishDayBeijing,
+      wechatPublishDayBeijing: endYmd,
+      wechatPublishWindowBeijing: { start: startYmd, end: endYmd },
+      wechatLookbackDays: lookbackDays,
       wechat: wechatItems,
       stats: { wechatPosts: wechatItems.length, dedupSkipped },
     };
@@ -1183,12 +1146,7 @@ async function main() {
     );
   }
 
-  // Save dedup state
   await saveState(state);
-
-  if (errors.length > 0) {
-    console.error(`  ${errors.length} non-fatal errors`);
-  }
 }
 
 main().catch((err) => {
