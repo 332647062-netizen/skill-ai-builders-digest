@@ -1,0 +1,15 @@
+[
+  {
+    "builder_name": "独立开发日报",
+    "platform": "web",
+    "site": "aihot",
+    "index_url": "https://aihot.dev/zh/"
+  },
+  {
+    "builder_name": "腾讯研究院 AI 研究情报库",
+    "platform": "web",
+    "site": "alphapulse",
+    "index_url": "https://www.alphapulse-lan.online/",
+    "articles_url": "https://www.alphapulse-lan.online/articles.js"
+  }
+]

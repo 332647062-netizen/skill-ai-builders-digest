@@ -25,6 +25,10 @@ import {
   readWechatRssInputList,
 } from "./sources/wechat-rss.js";
 import {
+  loadWebSitesSources,
+  readWebSitesInputList,
+} from "./sources/web-sites.js";
+import {
   addCalendarDaysShanghai,
   yesterdayShanghaiYmd,
 } from "./sources/shanghai-date.js";
@@ -1041,9 +1045,16 @@ async function fetchBlogContent(blogs, state, errors) {
 // -- Main --------------------------------------------------------------------
 
 async function main() {
-  // 仅生成微信公众号 feed（不再拉取 X / 播客 / 博客）。
+  // 优先：网页源（aihot / alphapulse）；否则 WeWe RSS；再否则 wechat-input.json。
+  // 仍写入 feed-wechat.json（Builder Card 形状不变，便于 prepare-digest）。
   const sources = await loadSources();
   const state = await loadState();
+
+  const webInputList = await readWebSitesInputList();
+  const webWantsFetch = webInputList.some((row) => {
+    const u = (row.index_url || row.url || "").trim();
+    return Boolean(u);
+  });
 
   const rssInputList = await readWechatRssInputList();
   const rssWantsFetch = rssInputList.some((row) => {
@@ -1051,7 +1062,14 @@ async function main() {
     return u && !/REPLACE_WITH_FEED_ID|\/xxx\//i.test(u);
   });
 
-  if (rssWantsFetch) {
+  if (webWantsFetch) {
+    console.error(
+      "Loading web sources from sources/web-sites-input.json (skip WeChat)...",
+    );
+    sources.wechat = await loadWebSitesSources({
+      userAgent: RSS_USER_AGENT,
+    });
+  } else if (rssWantsFetch) {
     console.error(
       "Loading WeChat sources from sources/wechat-rss-input.json (WeWe RSS)...",
     );
@@ -1085,11 +1103,15 @@ async function main() {
     const wechatItems = [];
     let dedupSkipped = 0;
     for (const it of sources.wechat) {
-      const id = idOf(it);
-      const pub =
-        it.publish_time && it.publish_time.length >= 10
+      // 滚动日刊（如 aihot 首页）无稳定归档日：钉到窗口结束日，保证每日推送能收录。
+      const pub = it.rolling_daily
+        ? endYmd
+        : it.publish_time && it.publish_time.length >= 10
           ? it.publish_time.slice(0, 10)
           : null;
+      const id = it.rolling_daily
+        ? `${it.builder_name}::${it.title}::${endYmd}`
+        : idOf(it);
       if (!pub) {
         console.error(
           `  - skip (no publish_time): ${it.builder_name} / ${it.title}`,
@@ -1117,11 +1139,11 @@ async function main() {
         continue;
       }
       wechatItems.push({
-        source: "wechat",
+        source: webWantsFetch ? "web" : "wechat",
         builder_name: it.builder_name,
         title: it.title,
         content: it.content,
-        publish_time: it.publish_time,
+        publish_time: pub,
         source_url: it.source_url || null,
         ...(it.parseError ? { parseError: it.parseError } : {}),
       });

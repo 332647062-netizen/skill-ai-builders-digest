@@ -148,8 +148,11 @@ node prepare-digest.js
 
 ## 源选择逻辑（`generate-feed.js`）
 
-1. 若 `wechat-rss-input.json` 中存在 **至少一条非占位** `feed_url` → **仅**走 `loadWechatRssSources()`。  
-2. 否则 → 回退 `loadWechatSources()`（`wechat-input.json` + 单页解析）。
+1. 若 `web-sites-input.json` 中存在至少一条 `index_url` → **仅**走网页源 `loadWebSitesSources()`（当前：aihot.dev、alphapulse-lan.online），**不**拉公众号。  
+2. 否则若 `wechat-rss-input.json` 中存在 **至少一条非占位** `feed_url` → **仅**走 `loadWechatRssSources()`。  
+3. 否则 → 回退 `loadWechatSources()`（`wechat-input.json` + 单页解析）。
+
+网页源配置见 `scripts/sources/web-sites-input.json`；输出仍写入 `feed-wechat.json`（字段形状与 Builder Card 一致）。
 
 ---
 

@@ -37,9 +37,18 @@ cd ~/skills/follow-builders/scripts && npm install
 
 智能体会继续问你推送频率、时区、语言、发送方式等。更多可复制指令见 [docs/user-ai-prompts-zh.md](docs/user-ai-prompts-zh.md)。
 
-### WeWe RSS（可选）
+### 网页信源（当前默认）
 
-使用自建 [WeWe RSS](docs/wechat-wewe-rss-iteration.md) 时，请维护 `scripts/sources/wechat-rss-input.json`，或在 `scripts` 目录执行 `npm run sync-wechat-rss` 从 `GET /feeds` 同步订阅列表。
+已配置从网页拉内容（不再走公众号）：
+
+1. https://aihot.dev/  
+2. https://www.alphapulse-lan.online/  
+
+名单在 [`scripts/sources/web-sites-input.json`](scripts/sources/web-sites-input.json)，说明见 [docs/web-sites-sources.md](docs/web-sites-sources.md)。
+
+### WeWe RSS（可选，改回公众号时用）
+
+把 `web-sites-input.json` 设为 `[]` 后，可再用自建 [WeWe RSS](docs/wechat-wewe-rss-iteration.md)：维护 `wechat-rss-input.json`，或在 `scripts` 执行 `npm run sync-wechat-rss`。
 
 ---
 

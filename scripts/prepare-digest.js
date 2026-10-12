@@ -78,21 +78,24 @@ function extractKeywords(text) {
   return found;
 }
 
-// Heuristic 200~500 字符的内容简介。Snap to a sentence boundary inside
-// the window so the cut feels natural. The summarize_wechat prompt tells
-// the LLM to overwrite this with a real distilled summary once wired in.
+// 简介约 200 汉字：优先在 160–220 字内按句号截断。
+// The summarize_wechat prompt can still overwrite once an LLM is wired in.
 function buildSummary(content, title) {
   const text = (content || "").replace(/\s+/g, " ").trim();
   if (!text) return title || "";
 
-  const window = text.slice(0, 600);
-  const breaks = ["。", "！", "？"];
+  const target = 200;
+  if (text.length <= target) return text;
+
+  const window = text.slice(0, Math.min(text.length, target + 40));
+  const breaks = ["。", "！", "？", "；"];
   let cut = -1;
   for (const ch of breaks) {
     const idx = window.lastIndexOf(ch);
-    if (idx > 200 && idx < 500 && idx > cut) cut = idx;
+    if (idx >= 160 && idx <= target + 20 && idx > cut) cut = idx;
   }
-  return cut > 0 ? window.slice(0, cut + 1) : window.slice(0, 400);
+  if (cut > 0) return window.slice(0, cut + 1);
+  return text.slice(0, target);
 }
 
 const PROMPTS_BASE = 'https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/prompts';

@@ -40,9 +40,18 @@ After the skill is loaded, send **one** of these to start setup:
 
 The agent will ask for digest frequency & time, timezone, language, and delivery. Copy-paste cheat sheet: [docs/user-ai-prompts-zh.md](docs/user-ai-prompts-zh.md) (Chinese).
 
-### WeWe RSS (optional)
+### Web sources (current default)
 
-If you use **WeWe RSS** for official-account feeds, maintain `scripts/sources/wechat-rss-input.json`, or run `npm run sync-wechat-rss` from the `scripts/` directory — see [docs/wechat-wewe-rss-iteration.md](docs/wechat-wewe-rss-iteration.md).
+Content is fetched from these sites (WeChat feeds are skipped when configured):
+
+1. https://aihot.dev/  
+2. https://www.alphapulse-lan.online/  
+
+Edit [`scripts/sources/web-sites-input.json`](scripts/sources/web-sites-input.json). Details: [docs/web-sites-sources.md](docs/web-sites-sources.md).
+
+### WeWe RSS (optional — switch back to WeChat)
+
+Set `web-sites-input.json` to `[]`, then maintain `wechat-rss-input.json` or run `npm run sync-wechat-rss` — see [docs/wechat-wewe-rss-iteration.md](docs/wechat-wewe-rss-iteration.md).
 
 ---
 
