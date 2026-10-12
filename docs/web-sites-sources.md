@@ -7,7 +7,7 @@
 | 名称 | 地址 | 解析方式 |
 |------|------|----------|
 | 独立开发日报 | https://aihot.dev/zh/ | 抓**中文站** HTML：中文标题、约 200 字简介、标题内嵌的**原文独立 URL**；`publish_time` 取页面刊期（如「独立开发日报 2026/8/6」），**不再伪造成昨天** |
-| 腾讯研究院 AI 研究情报库 | https://www.alphapulse-lan.online/ | 抓 `articles.js` 中的 `window.ARTICLES`，按文章日期过滤 |
+| 腾讯研究院 AI 研究情报库 | https://www.alphapulse-lan.online/ | 抓 `articles.js`；按文章日期过滤。站点数据里的原文是**飞书私有 wiki**（外人无权限），推送 `source_url` 改为公开情报库检索页 `?q=标题#library`，避免点开「没有权限访问」 |
 
 ## 改关注列表
 

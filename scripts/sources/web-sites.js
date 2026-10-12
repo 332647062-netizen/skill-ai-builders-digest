@@ -214,9 +214,10 @@ function parseAihot(html, builderName, indexUrl) {
 }
 
 /**
- * alphapulse — static site; article list in articles.js as window.ARTICLES = [...]
+ * alphapulse — articles.js 里的 url 全是飞书 wiki（需权限，外人打不开）。
+ * 推送主链接改用公开情报库页面；飞书地址只写进简介备注。
  */
-function parseAlphapulseArticlesJs(jsText, builderName) {
+function parseAlphapulseArticlesJs(jsText, builderName, publicIndexUrl) {
   const m = jsText.match(/window\.ARTICLES\s*=\s*(\[[\s\S]*?\]);/);
   if (!m) return [];
   let arts;
@@ -227,6 +228,11 @@ function parseAlphapulseArticlesJs(jsText, builderName) {
   }
   if (!Array.isArray(arts)) return [];
 
+  const indexBase = (publicIndexUrl || "https://www.alphapulse-lan.online/").replace(
+    /\/?$/,
+    "/",
+  );
+
   return arts
     .map((a) => {
       const publish_time = parseChineseDateToYmd(a.date);
@@ -234,13 +240,17 @@ function parseAlphapulseArticlesJs(jsText, builderName) {
       const title = (a.title || a.fullTitle || "").trim();
       const theme = (a.theme || "").trim();
       const full = (a.fullTitle || title).trim();
-      const content = buildChineseSummary(
-        [theme && `【${theme}】`, full].filter(Boolean).join(""),
-        title,
-        200,
-      );
-      const source_url = (a.url || "").trim();
-      if (!source_url) return null;
+      const feishuUrl = (a.url || "").trim();
+      // 公开可打开：情报库检索页（带标题关键词）；不再把飞书私链当作 source_url
+      const source_url = `${indexBase}?q=${encodeURIComponent(title)}#library`;
+      const body = [
+        theme && `【${theme}】`,
+        full,
+        feishuUrl && `飞书原文需权限，可在情报库检索同标题：${feishuUrl}`,
+      ]
+        .filter(Boolean)
+        .join("");
+      const content = buildChineseSummary(body, title, 200);
       return {
         builder_name: builderName,
         title,
@@ -287,7 +297,11 @@ export async function loadWebSitesSources(opts = {}) {
         ).trim();
         console.error(`  web: fetching alphapulse ${articlesUrl}`);
         const jsText = await fetchText(articlesUrl, userAgent);
-        const items = parseAlphapulseArticlesJs(jsText, builder_name);
+        const items = parseAlphapulseArticlesJs(
+          jsText,
+          builder_name,
+          index_url,
+        );
         console.error(
           `  web: ${builder_name} — ${items.length} item(s) in catalog`,
         );
