@@ -1103,11 +1103,15 @@ async function main() {
     const wechatItems = [];
     let dedupSkipped = 0;
     for (const it of sources.wechat) {
-      const pub =
-        it.publish_time && it.publish_time.length >= 10
+      // 热榜类（无按日归档）钉到窗口结束日，避免「今日榜」永远进不了「昨天」窗口。
+      const pub = it.rolling_daily
+        ? endYmd
+        : it.publish_time && it.publish_time.length >= 10
           ? it.publish_time.slice(0, 10)
           : null;
-      const id = idOf(it);
+      const id = it.rolling_daily
+        ? `${it.builder_name}::${it.title}::${endYmd}`
+        : idOf(it);
       if (!pub) {
         console.error(
           `  - skip (no publish_time): ${it.builder_name} / ${it.title}`,

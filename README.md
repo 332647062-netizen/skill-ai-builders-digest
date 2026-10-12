@@ -42,10 +42,7 @@ The agent will ask for digest frequency & time, timezone, language, and delivery
 
 ### Web sources (current default)
 
-Content is fetched from these sites (WeChat feeds are skipped when configured):
-
-1. https://aihot.dev/  
-2. https://www.alphapulse-lan.online/  
+AI-related items are fetched from web sources (WeChat feeds skipped when configured), including aihot.dev, aihot.news, alphapulse, tophub.ai channel, SoPilot hot tweets, and Ben's Bites. (`aihot.virxact.com` redirects to aihot.news and is skipped as a duplicate.)
 
 Edit [`scripts/sources/web-sites-input.json`](scripts/sources/web-sites-input.json). Details: [docs/web-sites-sources.md](docs/web-sites-sources.md).
 

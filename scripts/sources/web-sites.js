@@ -1,8 +1,9 @@
 // ============================================================================
-// Web site sources — aihot.dev + alphapulse-lan.online
+// Web site sources — aihot.dev / alphapulse / aihot.news / tophub / sopilot / Ben's Bites …
 // ============================================================================
 // Output item shape matches wechat builder cards for generate-feed.js:
-//   { builder_name, title, content, publish_time (YYYY-MM-DD Shanghai), source_url }
+//   { builder_name, title, content, publish_time (YYYY-MM-DD Shanghai), source_url,
+//     rolling_daily? }
 // ============================================================================
 
 import { readFile } from "fs/promises";
@@ -16,8 +17,13 @@ const INPUT_PATH = fileURLToPath(INPUT_URL);
 const DEFAULT_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
-/** Max cards from aihot homepage per run (page can list dozens of hot items). */
+/** Max cards from aihot homepage / RSS / hot boards per run. */
 const AIHOT_MAX_ITEMS = 12;
+const DEFAULT_MAX_ITEMS = 12;
+
+/** Soft AI topical filter (title+content). Sites with ai_filter:false skip this. */
+const AI_TOPIC_RE =
+  /\b(AI|AIGC|AGI|LLM|GPT|Claude|OpenAI|Anthropic|Gemini|DeepSeek|Grok|Codex|Cursor|MCP|RAG|Agent|Transformer|ChatGPT|Midjourney|Sora|Opus|Sonnet|Fable|Harness|Copilot|Perplexity|Ollama|LangChain|向量|embedding)\b|人工智能|大模型|智能体|多模态|生成式|机器学习|深度学习|提示词|文生图|文生视频|开源模型|推理模型|Agent|智能助手/i;
 
 /** Prefer Chinese edition when index is aihot root. */
 function resolveAihotIndexUrl(indexUrl) {
@@ -262,22 +268,190 @@ function parseAlphapulseArticlesJs(jsText, builderName, publicIndexUrl) {
     .filter(Boolean);
 }
 
+function wantsAiFilter(cfg) {
+  if (cfg.ai_filter === false || cfg.ai_filter === "false") return false;
+  return true;
+}
+
+function isAiRelated(title, content) {
+  const text = `${title || ""} ${content || ""}`;
+  return AI_TOPIC_RE.test(text);
+}
+
+function applyAiFilter(items, cfg, label) {
+  if (!wantsAiFilter(cfg)) return items;
+  const kept = items.filter((it) => isAiRelated(it.title, it.content));
+  const dropped = items.length - kept.length;
+  if (dropped > 0) {
+    console.error(`  web: ${label} AI-filter dropped ${dropped} non-AI item(s)`);
+  }
+  return kept;
+}
+
+function capItems(items, cfg) {
+  const n = Number(cfg.max_items) || DEFAULT_MAX_ITEMS;
+  return items.slice(0, Math.max(1, n));
+}
+
+function decodeXmlEntities(s) {
+  return String(s || "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+}
+
+function parseRssOrAtom(xml, builderName) {
+  const items = [];
+  const blocks = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)];
+  const entries = blocks.length
+    ? blocks
+    : [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/gi)];
+
+  for (const m of entries) {
+    const b = m[1];
+    const title = decodeXmlEntities(
+      (b.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || "",
+    ).replace(/<[^>]+>/g, "");
+    const link =
+      (b.match(/<link[^>]*href=["']([^"']+)["']/i) || [])[1] ||
+      decodeXmlEntities((b.match(/<link[^>]*>([^<]+)<\/link>/i) || [])[1] || "");
+    const pubRaw =
+      (b.match(/<pubDate>([^<]+)<\/pubDate>/i) || [])[1] ||
+      (b.match(/<updated>([^<]+)<\/updated>/i) || [])[1] ||
+      (b.match(/<published>([^<]+)<\/published>/i) || [])[1] ||
+      "";
+    const descHtml = decodeXmlEntities(
+      (b.match(/<description[^>]*>([\s\S]*?)<\/description>/i) || [])[1] ||
+        (b.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i) || [])[1] ||
+        (b.match(/<content[^>]*>([\s\S]*?)<\/content>/i) || [])[1] ||
+        "",
+    );
+    const content = buildChineseSummary(stripTags(descHtml), title, 200);
+    const publish_time = parseIsoToShanghaiYmd(pubRaw);
+    if (!title || !link || !publish_time) continue;
+    items.push({
+      builder_name: builderName,
+      title,
+      content,
+      publish_time,
+      source_url: link.trim(),
+    });
+  }
+  return items;
+}
+
+/**
+ * tophub.today/c/ai — 今日热榜 AI 频道；无稳定单日归档 → rolling_daily。
+ */
+function parseTophubAi(html, builderName) {
+  const items = [];
+  const seen = new Set();
+  const re =
+    /<a\s+href="(https?:\/\/[^"]+)"[^>]*itemid="\d+"[^>]*>[\s\S]*?<span class="t">\s*([^<]+?)\s*<\/span>/gi;
+  for (const m of html.matchAll(re)) {
+    const source_url = m[1].trim();
+    const title = stripTags(m[2]);
+    if (!title || !source_url || seen.has(source_url)) continue;
+    seen.add(source_url);
+    items.push({
+      builder_name: builderName,
+      title,
+      content: buildChineseSummary(title, title, 200),
+      publish_time: ymdInShanghai(Date.now()),
+      source_url,
+      rolling_daily: true,
+    });
+    if (items.length >= DEFAULT_MAX_ITEMS) break;
+  }
+  return items;
+}
+
+/**
+ * sopilot.net/zh/hot-tweets — Next.js 页；尽量从 SSR HTML 抽 x.com/status 链接。
+ * 完整列表偏客户端渲染；能抽到的条目标记 rolling_daily。
+ */
+function parseSopilotHotTweets(html, builderName) {
+  const items = [];
+  const seen = new Set();
+  const re =
+    /href="(https?:\/\/(?:x|twitter)\.com\/([A-Za-z0-9_]+)\/status\/(\d+)[^"]*)"/gi;
+  for (const m of html.matchAll(re)) {
+    // 归一化为无 query 的推文链接，便于去重与打开
+    const source_url = `https://x.com/${m[2]}/status/${m[3]}`;
+    if (seen.has(source_url)) continue;
+    seen.add(source_url);
+    const handle = m[2];
+    // 尝试在附近 HTML 取一段可见文本作简介
+    const idx = m.index ?? 0;
+    const near = html.slice(Math.max(0, idx - 1200), idx + 400);
+    const texts = [...near.matchAll(/>([^<]{12,160})</g)]
+      .map((x) => stripTags(x[1]))
+      .filter(
+        (t) =>
+          t &&
+          !/^(http|Follow|登录|Sign|View|打开|分享|复制)/i.test(t) &&
+          !/inline-flex|rounded|font-medium/.test(t),
+      );
+    const snippet =
+      texts.find((t) => /[\u4e00-\u9fff]/.test(t) || t.length > 24) ||
+      texts.at(-1) ||
+      "";
+    const title = snippet
+      ? snippet.length > 48
+        ? `${snippet.slice(0, 48)}…`
+        : snippet
+      : `SoPilot 热帖 @${handle}`;
+    items.push({
+      builder_name: builderName,
+      title: snippet ? `@${handle}: ${title}` : title,
+      content: buildChineseSummary(
+        snippet
+          ? `${snippet}（SoPilot AI 热帖）`
+          : `SoPilot 收录的 X 热帖，作者 @${handle}。原文：${source_url}`,
+        title,
+        200,
+      ),
+      publish_time: ymdInShanghai(Date.now()),
+      source_url,
+      rolling_daily: true,
+    });
+    if (items.length >= DEFAULT_MAX_ITEMS) break;
+  }
+  return items;
+}
+
 export async function loadWebSitesSources(opts = {}) {
   const list = await readWebSitesInputList();
   const userAgent = opts.userAgent || DEFAULT_UA;
   const out = [];
+  const seenFeeds = new Set();
 
   for (const cfg of list) {
     const builder_name = (cfg.builder_name || cfg.name || "").trim() || "Web";
     const site = (cfg.site || "").trim().toLowerCase();
     const index_url = (cfg.index_url || cfg.url || "").trim();
+    const feed_url = (cfg.feed_url || "").trim();
 
     try {
+      // aihot.virxact.com 已迁到 aihot.news — 跳过，避免重复
+      if (/aihot\.virxact\.com/i.test(index_url) || site === "aihot-virxact") {
+        console.error(
+          `  web: skip "${builder_name}" (aihot.virxact.com → aihot.news, use aihot-news feed)`,
+        );
+        continue;
+      }
+
       if (site === "aihot" || /aihot\.dev/i.test(index_url)) {
         const url = resolveAihotIndexUrl(index_url);
         console.error(`  web: fetching aihot ${url}`);
         const html = await fetchText(url, userAgent);
-        const items = parseAihot(html, builder_name, url);
+        let items = parseAihot(html, builder_name, url);
+        items = capItems(applyAiFilter(items, cfg, builder_name), cfg);
         console.error(`  web: ${builder_name} — ${items.length} item(s)`);
         out.push(...items);
         continue;
@@ -285,8 +459,7 @@ export async function loadWebSitesSources(opts = {}) {
 
       if (
         site === "alphapulse" ||
-        /alphapulse-lan\.online/i.test(index_url) ||
-        cfg.articles_url
+        /alphapulse-lan\.online/i.test(index_url)
       ) {
         const articlesUrl = (
           cfg.articles_url ||
@@ -297,14 +470,74 @@ export async function loadWebSitesSources(opts = {}) {
         ).trim();
         console.error(`  web: fetching alphapulse ${articlesUrl}`);
         const jsText = await fetchText(articlesUrl, userAgent);
-        const items = parseAlphapulseArticlesJs(
+        let items = parseAlphapulseArticlesJs(
           jsText,
           builder_name,
           index_url,
         );
+        items = capItems(applyAiFilter(items, cfg, builder_name), cfg);
         console.error(
-          `  web: ${builder_name} — ${items.length} item(s) in catalog`,
+          `  web: ${builder_name} — ${items.length} item(s) after filter/cap`,
         );
+        out.push(...items);
+        continue;
+      }
+
+      if (
+        site === "rss" ||
+        site === "aihot-news" ||
+        site === "bensbites" ||
+        feed_url ||
+        /aihot\.news/i.test(index_url) ||
+        /bensbites\.com/i.test(index_url)
+      ) {
+        let rssUrl = feed_url;
+        if (!rssUrl && /aihot\.news/i.test(index_url)) {
+          rssUrl = "https://aihot.news/feed.xml";
+        }
+        if (!rssUrl && /bensbites\.com/i.test(index_url)) {
+          rssUrl = "https://www.bensbites.com/feed";
+        }
+        if (!rssUrl) {
+          console.error(`  web: "${builder_name}" missing feed_url, skip`);
+          continue;
+        }
+        if (seenFeeds.has(rssUrl)) {
+          console.error(`  web: skip duplicate feed ${rssUrl}`);
+          continue;
+        }
+        seenFeeds.add(rssUrl);
+        console.error(`  web: fetching RSS ${rssUrl}`);
+        const xml = await fetchText(rssUrl, userAgent);
+        let items = parseRssOrAtom(xml, builder_name);
+        items = capItems(applyAiFilter(items, cfg, builder_name), cfg);
+        console.error(`  web: ${builder_name} — ${items.length} item(s)`);
+        out.push(...items);
+        continue;
+      }
+
+      if (site === "tophub" || /tophub\.today/i.test(index_url)) {
+        console.error(`  web: fetching tophub ${index_url}`);
+        const html = await fetchText(index_url, userAgent);
+        if (/安全验证|验证码/.test(html)) {
+          console.error(
+            `  web: tophub returned captcha page — skip "${builder_name}"`,
+          );
+          continue;
+        }
+        let items = parseTophubAi(html, builder_name);
+        items = capItems(applyAiFilter(items, cfg, builder_name), cfg);
+        console.error(`  web: ${builder_name} — ${items.length} item(s)`);
+        out.push(...items);
+        continue;
+      }
+
+      if (site === "sopilot" || /sopilot\.net/i.test(index_url)) {
+        console.error(`  web: fetching sopilot ${index_url}`);
+        const html = await fetchText(index_url, userAgent);
+        let items = parseSopilotHotTweets(html, builder_name);
+        items = capItems(applyAiFilter(items, cfg, builder_name), cfg);
+        console.error(`  web: ${builder_name} — ${items.length} item(s)`);
         out.push(...items);
         continue;
       }

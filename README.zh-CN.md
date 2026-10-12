@@ -39,10 +39,12 @@ cd ~/skills/follow-builders/scripts && npm install
 
 ### 网页信源（当前默认）
 
-已配置从网页拉内容（不再走公众号）：
+已配置从网页拉 **AI 相关** 资讯（不再走公众号），包括：
 
-1. https://aihot.dev/  
-2. https://www.alphapulse-lan.online/  
+- https://aihot.dev/zh/、https://aihot.news/all（virxact 已并入 aihot.news）
+- https://www.alphapulse-lan.online/
+- https://tophub.today/c/ai、https://sopilot.net/zh/hot-tweets
+- https://www.bensbites.com/
 
 名单在 [`scripts/sources/web-sites-input.json`](scripts/sources/web-sites-input.json)，说明见 [docs/web-sites-sources.md](docs/web-sites-sources.md)。
 

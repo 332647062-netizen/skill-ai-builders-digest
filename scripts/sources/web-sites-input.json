@@ -3,13 +3,58 @@
     "builder_name": "独立开发日报",
     "platform": "web",
     "site": "aihot",
-    "index_url": "https://aihot.dev/zh/"
+    "index_url": "https://aihot.dev/zh/",
+    "ai_filter": false,
+    "max_items": 12
   },
   {
     "builder_name": "腾讯研究院 AI 研究情报库",
     "platform": "web",
     "site": "alphapulse",
     "index_url": "https://www.alphapulse-lan.online/",
-    "articles_url": "https://www.alphapulse-lan.online/articles.js"
+    "articles_url": "https://www.alphapulse-lan.online/articles.js",
+    "ai_filter": true,
+    "max_items": 12
+  },
+  {
+    "builder_name": "AIHOT",
+    "platform": "web",
+    "site": "aihot-news",
+    "index_url": "https://aihot.news/all",
+    "feed_url": "https://aihot.news/feed.xml",
+    "ai_filter": false,
+    "max_items": 12
+  },
+  {
+    "builder_name": "AIHOT (virxact)",
+    "platform": "web",
+    "site": "aihot-virxact",
+    "index_url": "https://aihot.virxact.com/",
+    "ai_filter": false
+  },
+  {
+    "builder_name": "今日热榜·AI",
+    "platform": "web",
+    "site": "tophub",
+    "index_url": "https://tophub.today/c/ai",
+    "ai_filter": true,
+    "max_items": 12
+  },
+  {
+    "builder_name": "SoPilot 热帖",
+    "platform": "web",
+    "site": "sopilot",
+    "index_url": "https://sopilot.net/zh/hot-tweets",
+    "ai_filter": false,
+    "max_items": 12
+  },
+  {
+    "builder_name": "Ben's Bites",
+    "platform": "web",
+    "site": "bensbites",
+    "index_url": "https://www.bensbites.com/",
+    "feed_url": "https://www.bensbites.com/feed",
+    "ai_filter": true,
+    "max_items": 12
   }
 ]
