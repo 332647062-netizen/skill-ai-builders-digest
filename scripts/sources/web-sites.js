@@ -130,18 +130,39 @@ function isBlockedAihotTitle(title) {
 }
 
 /**
- * aihot.dev/zh — 中文滚动日刊。
- * h4 标题内嵌原文链接；正文为中文简介。
+ * 解析 aihot 页面真实刊期，例如「独立开发日报 2026/8/6」或 dateModified。
+ * 禁止用「今天/昨天」冒充——首页可能长期停在旧刊。
  */
-function parseAihot(html, builderName, indexUrl) {
+function parseAihotIssueYmd(html) {
+  const heading = html.match(
+    /独立开发日报\s*(\d{4})\s*[\/\-年]\s*(\d{1,2})\s*[\/\-月]\s*(\d{1,2})/,
+  );
+  if (heading) {
+    return `${heading[1]}-${String(Number(heading[2])).padStart(2, "0")}-${String(Number(heading[3])).padStart(2, "0")}`;
+  }
   const dm =
     html.match(/itemprop=["']?dateModified["']?\s+content=["']([^"']+)["']/i) ||
     html.match(/content=["']([^"']+)["'][^>]*itemprop=["']?dateModified/i) ||
     html.match(/dateModified["']?\s+content=["']([^"']+)["']/i);
-  const publish_time =
-    ymdInShanghai(Date.now()) || parseIsoToShanghaiYmd(dm?.[1]);
+  return parseIsoToShanghaiYmd(dm?.[1]);
+}
+
+/**
+ * aihot.dev/zh — 中文日刊首页。
+ * h4 标题内嵌原文链接；正文为中文简介；publish_time = 页面刊期（非滚动伪日期）。
+ */
+function parseAihot(html, builderName, indexUrl) {
+  const publish_time = parseAihotIssueYmd(html);
+  if (!publish_time) {
+    console.error(
+      `  web: aihot could not parse issue date from ${indexUrl} — skip site`,
+    );
+    return [];
+  }
+  console.error(`  web: aihot issue date = ${publish_time}`);
 
   const items = [];
+  const seenUrls = new Set();
   // 仅用 h4：每条热点；h3 多为「AI 技术与产品」等栏目名
   const headingRe = /<h4[^>]*>([\s\S]*?)<\/h4>/gi;
   const matches = [...html.matchAll(headingRe)];
@@ -159,6 +180,8 @@ function parseAihot(html, builderName, indexUrl) {
       // 无单独原文链接则跳过（满足「需要单独 URL」）
       continue;
     }
+    if (seenUrls.has(itemUrl)) continue; // 同页多栏目会重复同一条
+    seenUrls.add(itemUrl);
 
     const after = html.slice(m.index + m[0].length);
     const nextHeading = after.search(/<h[34][\s>]/i);
@@ -177,7 +200,6 @@ function parseAihot(html, builderName, indexUrl) {
       content,
       publish_time,
       source_url: itemUrl,
-      rolling_daily: true,
     });
     if (items.length >= AIHOT_MAX_ITEMS) break;
   }

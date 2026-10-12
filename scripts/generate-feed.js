@@ -1103,15 +1103,11 @@ async function main() {
     const wechatItems = [];
     let dedupSkipped = 0;
     for (const it of sources.wechat) {
-      // 滚动日刊（如 aihot 首页）无稳定归档日：钉到窗口结束日，保证每日推送能收录。
-      const pub = it.rolling_daily
-        ? endYmd
-        : it.publish_time && it.publish_time.length >= 10
+      const pub =
+        it.publish_time && it.publish_time.length >= 10
           ? it.publish_time.slice(0, 10)
           : null;
-      const id = it.rolling_daily
-        ? `${it.builder_name}::${it.title}::${endYmd}`
-        : idOf(it);
+      const id = idOf(it);
       if (!pub) {
         console.error(
           `  - skip (no publish_time): ${it.builder_name} / ${it.title}`,
