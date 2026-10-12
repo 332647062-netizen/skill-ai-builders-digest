@@ -290,7 +290,13 @@ function applyAiFilter(items, cfg, label) {
 
 function capItems(items, cfg) {
   const n = Number(cfg.max_items) || DEFAULT_MAX_ITEMS;
-  return items.slice(0, Math.max(1, n));
+  // 先按发布日新→旧，避免 alphapulse 这类「旧文在前」的目录被截掉近期条目
+  const sorted = [...items].sort((a, b) => {
+    const da = a.rolling_daily ? "9999-99-99" : a.publish_time || "";
+    const db = b.rolling_daily ? "9999-99-99" : b.publish_time || "";
+    return db.localeCompare(da);
+  });
+  return sorted.slice(0, Math.max(1, n));
 }
 
 function decodeXmlEntities(s) {
